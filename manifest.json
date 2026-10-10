@@ -1,0 +1,9 @@
+{
+  "id": "lodestone",
+  "name": "Lodestone",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Launch, record and resume Claude Code sessions (PowerShell or WSL) from your notes.",
+  "author": "MyHighLow",
+  "isDesktopOnly": true
+}
