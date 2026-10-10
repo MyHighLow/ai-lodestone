@@ -1,4 +1,6 @@
 import type LodestonePlugin from "../main";
+import type { Env } from "../types";
+import { LODESTONE_ICON } from "../icon";
 import { parseSessionBody, SESSION_LANG } from "../parse";
 import { relativeTime, truncate } from "../util";
 import { button, cardHeader, envBadge, fenceTitle, isolate } from "./common";
@@ -10,7 +12,7 @@ export function registerSessionBlock(plugin: LodestonePlugin) {
 		const card = el.createDiv({ cls: "lodestone-card lodestone-session" });
 		isolate(card);
 
-		const { titleEl, right } = cardHeader(card, "history", override ?? block.name ?? "Claude session");
+		const { titleEl, right } = cardHeader(card, LODESTONE_ICON, override ?? block.name ?? "Claude session");
 		if (!block.sessionId) {
 			card.createDiv({
 				cls: "lodestone-error",
@@ -30,28 +32,20 @@ export function registerSessionBlock(plugin: LodestonePlugin) {
 		const snippet = card.createDiv({ cls: "lodestone-snippet" });
 
 		const actions = card.createDiv({ cls: "lodestone-actions" });
-		const resumeBtn = button(actions, { text: "Resume", icon: "play", cta: true, tooltip: "Right-click to pick PowerShell or WSL" });
+		const resumeBtn = button(actions, { text: "Resume", icon: "play", cta: true, tooltip: "Right-click to change where it opens" });
 		const copyBtn = button(actions, { text: "Copy command", icon: "copy" });
 
 		const fallbackCwd = () => plugin.noteFolder(ctx.sourcePath);
-		let foundEnv = plugin.settings.defaultEnv;
 		const title = () => titleEl.textContent ?? undefined;
 
 		resumeBtn.addEventListener("click", () =>
 			void plugin.resume(sessionId, { fallbackCwd: fallbackCwd(), title: title(), notePath: ctx.sourcePath }),
 		);
-		resumeBtn.addEventListener("contextmenu", (evt) =>
-			plugin.showEnvMenu(
-				evt,
-				"Resume",
-				(env) => void plugin.resume(sessionId, { env, fallbackCwd: fallbackCwd(), title: title(), notePath: ctx.sourcePath }),
-				foundEnv,
-			),
-		);
+		// Existing sessions resume in the shell that owns them, once the transcript is found.
+		let ownedBy: Env | undefined;
+		resumeBtn.addEventListener("contextmenu", (evt) => plugin.showOpenSettingsMenu(evt, { ownedBy }));
 		copyBtn.addEventListener("click", () => void plugin.copyResumeCommand(sessionId, { fallbackCwd: fallbackCwd() }));
-		copyBtn.addEventListener("contextmenu", (evt) =>
-			plugin.showEnvMenu(evt, "Copy command", (env) => void plugin.copyResumeCommand(sessionId, { env, fallbackCwd: fallbackCwd() }), foundEnv),
-		);
+		copyBtn.addEventListener("contextmenu", (evt) => plugin.showOpenSettingsMenu(evt, { ownedBy }));
 
 		void plugin.sessions.lookup(sessionId).then((info) => {
 			badgeSlot.empty();
@@ -60,7 +54,7 @@ export function registerSessionBlock(plugin: LodestonePlugin) {
 				meta.setText("Transcript not found. Resume will use your default terminal and this note's folder.");
 				return;
 			}
-			foundEnv = info.env;
+			ownedBy = info.env;
 			envBadge(badgeSlot, info.env);
 			if (!override && !block.name && (info.title || info.firstPrompt)) {
 				titleEl.setText(info.title ?? truncate(info.firstPrompt!, 80));

@@ -1,3 +1,5 @@
+import type { TerminalApp } from "./scripts";
+
 export type Env = "powershell" | "wsl";
 
 export const ENV_LABEL: Record<Env, string> = {
@@ -7,6 +9,12 @@ export const ENV_LABEL: Record<Env, string> = {
 
 export interface LodestoneSettings {
 	defaultEnv: Env;
+	/** Where sessions open. Windows Terminal falls back to a console window if it isn't installed. */
+	terminalApp: TerminalApp;
+	/** Windows Terminal: open a new window instead of a tab in the last-used window. */
+	wtNewWindow: boolean;
+	/** Path to wt.exe or WindowsTerminal.exe. Empty = auto-detect. */
+	windowsTerminalPath: string;
 	/** "auto" picks pwsh 7 when installed, else Windows PowerShell 5.1. */
 	powershellExe: string;
 	/** Empty = WSL's default distro. */
@@ -27,6 +35,9 @@ export interface LodestoneSettings {
 
 export const DEFAULT_SETTINGS: LodestoneSettings = {
 	defaultEnv: "powershell",
+	terminalApp: "windows-terminal",
+	wtNewWindow: false,
+	windowsTerminalPath: "",
 	powershellExe: "auto",
 	wslDistro: "",
 	wslMountRoot: "/mnt",

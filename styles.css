@@ -1,8 +1,22 @@
+body {
+	--lodestone-orange: #d97757;
+	--lodestone-orange-hover: #c6613f;
+	--lodestone-orange-rgb: 217, 119, 87;
+}
+
+/* Header button: the lodestone icon in Claude orange. */
+.lodestone-header-button {
+	--icon-color: var(--lodestone-orange);
+	--icon-color-hover: var(--lodestone-orange-hover);
+	--icon-color-focused: var(--lodestone-orange);
+	color: var(--lodestone-orange);
+}
+
 .lodestone-card {
 	border: 1px solid var(--background-modifier-border);
-	border-left: 3px solid var(--color-orange);
+	border-left: 3px solid var(--lodestone-orange);
 	border-radius: var(--radius-m);
-	background: var(--background-secondary);
+	background: linear-gradient(rgba(var(--lodestone-orange-rgb), 0.05), rgba(var(--lodestone-orange-rgb), 0.05)), var(--background-secondary);
 	padding: var(--size-4-3) var(--size-4-4);
 	display: flex;
 	flex-direction: column;
@@ -11,7 +25,7 @@
 }
 
 .lodestone-prompt {
-	border-left-color: var(--color-purple);
+	border-left-style: dashed;
 }
 
 .lodestone-header {
@@ -22,7 +36,27 @@
 
 .lodestone-header-icon {
 	display: flex;
-	color: var(--text-muted);
+	color: var(--lodestone-orange);
+}
+
+.lodestone-header-icon svg {
+	width: 20px;
+	height: 20px;
+}
+
+.lodestone-card .lodestone-btn.mod-cta {
+	background-color: var(--lodestone-orange);
+	color: #fff;
+}
+
+.lodestone-card .lodestone-btn.mod-cta:hover {
+	background-color: var(--lodestone-orange-hover);
+}
+
+.lodestone-card a.lodestone-toggle,
+.lodestone-runs summary:hover,
+.lodestone-run .clickable-icon:hover {
+	color: var(--lodestone-orange);
 }
 
 .lodestone-title {
@@ -56,8 +90,8 @@
 }
 
 .lodestone-badge-wsl {
-	background: rgba(var(--color-orange-rgb), 0.15);
-	color: var(--color-orange);
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--color-green);
 }
 
 .lodestone-badge-missing {
@@ -192,4 +226,9 @@
 .lodestone-setting-wide {
 	width: 100%;
 	min-width: 260px;
+}
+
+.lodestone-badge-kind {
+	background: rgba(var(--lodestone-orange-rgb), 0.15);
+	color: var(--lodestone-orange);
 }

@@ -3,9 +3,10 @@ import * as path from "path";
 import { registerPromptBlock } from "./blocks/promptBlock";
 import { registerSessionBlock } from "./blocks/sessionBlock";
 import { HistoryModal } from "./historyModal";
-import { launchInTerminal } from "./launcher";
+import { LODESTONE_ICON, registerIcons } from "./icon";
+import { findWindowsTerminal, launchInTerminal } from "./launcher";
 import { formatSessionBlock, PROMPT_LANG, UUID_RE, parseSessionBody } from "./parse";
-import { buildCopyCommand, newSessionArgs, resumeArgs, windowsToWsl, type LaunchSpec } from "./scripts";
+import { buildCopyCommand, newSessionArgs, resumeArgs, windowsToWsl, type LaunchSpec, type TerminalApp } from "./scripts";
 import { SessionStore, type SessionInfo } from "./sessions";
 import { LodestoneSettingTab } from "./settings";
 import { DEFAULT_SETTINGS, ENV_LABEL, type Env, type HistoryEntry, type LaunchSource, type LodestoneSettings, type PluginData } from "./types";
@@ -33,21 +34,27 @@ export default class LodestonePlugin extends Plugin {
 	sessions = new SessionStore(() => this.settings);
 	private headerButtons = new WeakMap<MarkdownView, HTMLElement>();
 	private envListeners = new Set<() => void>();
+	private warnedNoWindowsTerminal = false;
 
 	async onload() {
 		const data = ((await this.loadData()) ?? {}) as Partial<PluginData>;
 		this.settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
 		this.history = data.history ?? [];
 
+		registerIcons();
 		registerSessionBlock(this);
 		registerPromptBlock(this);
 		this.addSettingTab(new LodestoneSettingTab(this.app, this));
 
-		this.app.workspace.onLayoutReady(() => this.addHeaderButtons());
+		this.app.workspace.onLayoutReady(() => {
+			this.addHeaderButtons();
+			if (this.settings.terminalApp === "windows-terminal") void findWindowsTerminal(this.settings.windowsTerminalPath);
+		});
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.addHeaderButtons()));
 
 		this.addCommand({
 			id: "launch-with-note",
+			icon: LODESTONE_ICON,
 			name: "Launch Claude with current note",
 			checkCallback: (checking) => {
 				const file = this.app.workspace.getActiveFile();
@@ -102,28 +109,57 @@ export default class LodestonePlugin extends Plugin {
 		return () => this.envListeners.delete(fn);
 	}
 
-	/** Context menu offering PowerShell / WSL; the current default is checked. */
-	showEnvMenu(evt: MouseEvent, verb: string, onPick: (env: Env) => void, checked: Env = this.settings.defaultEnv) {
-		evt.preventDefault();
-		const menu = new Menu();
-		for (const env of ["powershell", "wsl"] as Env[]) {
-			menu.addItem((item) =>
-				item
-					.setTitle(`${verb} in ${ENV_LABEL[env]}`)
-					.setIcon(env === "wsl" ? "terminal-square" : "terminal")
-					.setChecked(env === checked)
-					.onClick(() => onPick(env)),
-			);
-		}
-		menu.showAtMouseEvent(evt);
+	async setTerminalApp(terminal: TerminalApp) {
+		if (this.settings.terminalApp === terminal) return;
+		this.settings.terminalApp = terminal;
+		await this.save();
 	}
 
-	/** Pick an env from the menu, make it the default, then run `action` in it. */
-	showDefaultEnvMenu(evt: MouseEvent, verb: string, action: (env: Env) => void) {
-		this.showEnvMenu(evt, verb, (env) => {
-			void this.setDefaultEnv(env);
-			action(env);
-		});
+	/**
+	 * The right-click menu on every Claude button. It only changes how Claude will open
+	 * (shell and terminal app); it never launches anything.
+	 * `ownedBy` is set for existing sessions, which always resume in the shell that owns them.
+	 */
+	showOpenSettingsMenu(evt: MouseEvent, opts: { ownedBy?: Env } = {}) {
+		evt.preventDefault();
+		evt.stopPropagation();
+		const menu = new Menu();
+		menu.addItem((i) => i.setTitle("Open Claude in").setIsLabel(true));
+		for (const env of ["powershell", "wsl"] as Env[]) {
+			menu.addItem((i) =>
+				i
+					.setTitle(ENV_LABEL[env])
+					.setIcon(env === "wsl" ? "terminal-square" : "terminal")
+					.setChecked(env === this.settings.defaultEnv)
+					.onClick(async () => {
+						await this.setDefaultEnv(env);
+						new Notice(`Claude will open in ${ENV_LABEL[env]}`);
+					}),
+			);
+		}
+		menu.addSeparator();
+		menu.addItem((i) => i.setTitle("Terminal app").setIsLabel(true));
+		for (const [terminal, label] of [
+			["windows-terminal", "Windows Terminal"],
+			["console", "Console window"],
+		] as [TerminalApp, string][]) {
+			menu.addItem((i) =>
+				i
+					.setTitle(label)
+					.setIcon(terminal === "console" ? "app-window" : "panels-top-left")
+					.setChecked(terminal === this.settings.terminalApp)
+					.onClick(async () => {
+						await this.setTerminalApp(terminal);
+						new Notice(`Claude will open in ${label}`);
+					}),
+			);
+		}
+		if (opts.ownedBy) {
+			const owner = ENV_LABEL[opts.ownedBy];
+			menu.addSeparator();
+			menu.addItem((i) => i.setTitle(`This session belongs to ${owner}, so it always resumes there.`).setIcon("info").setDisabled(true));
+		}
+		menu.showAtMouseEvent(evt);
 	}
 
 	// ---- header button -------------------------------------------------------
@@ -132,13 +168,11 @@ export default class LodestonePlugin extends Plugin {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || this.headerButtons.has(view)) continue;
-			const button = view.addAction("bot", this.headerTooltip(), () => {
+			const button = view.addAction(LODESTONE_ICON, this.headerTooltip(), () => {
 				if (view.file) void this.launchFromNote(view.file, this.settings.defaultEnv);
 			});
 			button.addClass("lodestone-header-button");
-			button.addEventListener("contextmenu", (evt) =>
-				this.showDefaultEnvMenu(evt, "Open Claude", (env) => view.file && void this.launchFromNote(view.file, env)),
-			);
+			button.addEventListener("contextmenu", (evt) => this.showOpenSettingsMenu(evt));
 			const unsubscribe = this.onDefaultEnvChange(() => button.setAttribute("aria-label", this.headerTooltip()));
 			view.register(unsubscribe);
 			this.headerButtons.set(view, button);
@@ -146,7 +180,7 @@ export default class LodestonePlugin extends Plugin {
 	}
 
 	private headerTooltip() {
-		return `Open Claude with this note (${ENV_LABEL[this.settings.defaultEnv]}). Right-click to choose.`;
+		return `Open Claude with this note (${ENV_LABEL[this.settings.defaultEnv]}). Right-click to change where it opens.`;
 	}
 
 	// ---- paths -----------------------------------------------------------------
@@ -204,7 +238,7 @@ export default class LodestonePlugin extends Plugin {
 		const sessionId = crypto.randomUUID();
 		const spec = this.newSessionSpec(opts, sessionId);
 		try {
-			await launchInTerminal(spec, opts.title, this.settings);
+			await this.openTerminal(spec, opts.title);
 		} catch (e) {
 			new Notice(`Lodestone: couldn't launch Claude: ${(e as Error).message}`);
 			return null;
@@ -243,7 +277,7 @@ export default class LodestonePlugin extends Plugin {
 	async resume(sessionId: string, opts: { env?: Env; fallbackCwd?: string; title?: string; notePath?: string } = {}) {
 		const { spec, title } = await this.resolveResume(sessionId, opts);
 		try {
-			await launchInTerminal(spec, title, this.settings);
+			await this.openTerminal(spec, title);
 		} catch (e) {
 			new Notice(`Lodestone: couldn't resume: ${(e as Error).message}`);
 			return;
@@ -257,6 +291,15 @@ export default class LodestonePlugin extends Plugin {
 			source: past?.source ?? "resume",
 			notePath: past?.notePath ?? opts.notePath,
 		});
+	}
+
+	/** Launches, and says once per session if Windows Terminal was requested but isn't installed. */
+	private async openTerminal(spec: LaunchSpec, title: string) {
+		const { terminal } = await launchInTerminal(spec, title, this.settings);
+		if (this.settings.terminalApp === "windows-terminal" && terminal !== "windows-terminal" && !this.warnedNoWindowsTerminal) {
+			this.warnedNoWindowsTerminal = true;
+			new Notice("Lodestone: couldn't find Windows Terminal, so a console window was used instead. Set its path in Lodestone's settings.", 8000);
+		}
 	}
 
 	async copyResumeCommand(sessionId: string, opts: { env?: Env; fallbackCwd?: string } = {}) {

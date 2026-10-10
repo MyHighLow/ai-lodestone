@@ -101,7 +101,32 @@ export function buildCopyCommand(spec: LaunchSpec, claudeCmd: string): string {
 	return `cd ${psQuote(spec.cwd)}; ${psCommand(claudeCmd, spec.args, false)}`;
 }
 
-/** Text for `start "<title>"`: cmd treats `"` and `%` specially even inside quotes. */
+/** Text for a window title: cmd treats `"` and `%` specially even inside quotes, wt splits on `;`. */
 export function consoleTitle(title: string): string {
-	return title.replace(/["%^\r\n]/g, "").slice(0, 80) || "Claude";
+	return title.replace(/["%^;\r\n]/g, "").slice(0, 80) || "Claude";
+}
+
+export type TerminalApp = "console" | "windows-terminal";
+
+export interface StartOptions {
+	title: string;
+	/** The program and its arguments, already quoted for a Windows command line. */
+	program: string;
+	terminal: TerminalApp;
+	/** Path to wt.exe; required for "windows-terminal". */
+	wtExe?: string;
+	/** Windows Terminal: true opens a new window, false a new tab in the last-used window. */
+	wtNewWindow?: boolean;
+}
+
+/** The line run by `cmd /c` that opens the terminal. */
+export function buildStartCommand(opts: StartOptions): string {
+	const title = consoleTitle(opts.title);
+	if (opts.terminal === "windows-terminal" && opts.wtExe) {
+		// wt treats a bare `;` as a separator between its own subcommands.
+		const program = opts.program.replace(/;/g, "\\;");
+		const window = opts.wtNewWindow ? "new" : "0";
+		return `start "" "${opts.wtExe}" -w ${window} new-tab --title "${title}" ${program}`;
+	}
+	return `start "${title}" ${opts.program}`;
 }

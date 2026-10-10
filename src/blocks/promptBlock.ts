@@ -1,4 +1,5 @@
 import { MarkdownRenderChild, Menu, Notice, type MarkdownPostProcessorContext } from "obsidian";
+import { LODESTONE_ICON } from "../icon";
 import type LodestonePlugin from "../main";
 import { appendRunToBlock, formatRunTime, formatSessionBlock, parsePromptBody, PROMPT_LANG, type PromptRun } from "../parse";
 import { buildCopyCommand } from "../scripts";
@@ -15,8 +16,8 @@ export function registerPromptBlock(plugin: LodestonePlugin) {
 		const card = el.createDiv({ cls: "lodestone-card lodestone-prompt" });
 		isolate(card);
 
-		const { right } = cardHeader(card, "message-square-plus", title ?? "Claude prompt");
-		right.createSpan({ cls: "lodestone-badge", text: "prompt" });
+		const { right } = cardHeader(card, LODESTONE_ICON, title ?? "Claude prompt");
+		right.createSpan({ cls: "lodestone-badge lodestone-badge-kind", text: "prompt" });
 
 		if (!prompt) {
 			card.createDiv({ cls: "lodestone-error", text: "Write the prompt for the new session inside this block." });
@@ -34,7 +35,7 @@ export function registerPromptBlock(plugin: LodestonePlugin) {
 		}
 
 		const actions = card.createDiv({ cls: "lodestone-actions" });
-		const runBtn = button(actions, { text: "", icon: "play", cta: true, tooltip: "Start a new session. Right-click to pick PowerShell or WSL" });
+		const runBtn = button(actions, { text: "", icon: "play", cta: true, tooltip: "Start a new session. Right-click to change where it opens" });
 		const copyBtn = button(actions, { text: "Copy command", icon: "copy" });
 		const updateLabel = () => setButtonText(runBtn, `Run in ${ENV_LABEL[plugin.settings.defaultEnv]}`);
 		updateLabel();
@@ -56,7 +57,7 @@ export function registerPromptBlock(plugin: LodestonePlugin) {
 			if (sessionId) await recordRun(plugin, el, ctx, { time: formatRunTime(new Date()), env, sessionId });
 		};
 		runBtn.addEventListener("click", () => void launch(plugin.settings.defaultEnv));
-		runBtn.addEventListener("contextmenu", (evt) => plugin.showDefaultEnvMenu(evt, "Run", (env) => void launch(env)));
+		runBtn.addEventListener("contextmenu", (evt) => plugin.showOpenSettingsMenu(evt));
 
 		const copyCommand = (env: Env) => {
 			const spec = plugin.newSessionSpec({
@@ -68,7 +69,7 @@ export function registerPromptBlock(plugin: LodestonePlugin) {
 			void plugin.copy(buildCopyCommand(spec, plugin.claudeCmd(env)), `${ENV_LABEL[env]} command copied`);
 		};
 		copyBtn.addEventListener("click", () => copyCommand(plugin.settings.defaultEnv));
-		copyBtn.addEventListener("contextmenu", (evt) => plugin.showEnvMenu(evt, "Copy command", copyCommand));
+		copyBtn.addEventListener("contextmenu", (evt) => plugin.showOpenSettingsMenu(evt));
 
 		if (runs.length) renderRuns(plugin, card, el, ctx, runs, title);
 	});
@@ -94,17 +95,13 @@ function renderRuns(
 		envBadge(row, run.env);
 		const info = row.createSpan({ cls: "lodestone-run-info lodestone-mono", text: run.sessionId.slice(0, 8) });
 		const buttons = row.createDiv({ cls: "lodestone-run-buttons" });
-		const opts = (env?: Env) => ({ env, fallbackCwd: fallbackCwd(), notePath: ctx.sourcePath });
+		const opts = () => ({ fallbackCwd: fallbackCwd(), notePath: ctx.sourcePath });
 
 		iconButton(buttons, "play", "Resume").addEventListener("click", () => void plugin.resume(run.sessionId, opts()));
 		iconButton(buttons, "copy", "Copy resume command").addEventListener("click", () => void plugin.copyResumeCommand(run.sessionId, opts()));
 		row.addEventListener("contextmenu", (evt) => {
 			evt.preventDefault();
 			const menu = new Menu();
-			for (const env of ["powershell", "wsl"] as Env[]) {
-				menu.addItem((i) => i.setTitle(`Resume in ${ENV_LABEL[env]}`).setIcon("play").onClick(() => void plugin.resume(run.sessionId, opts(env))));
-			}
-			menu.addSeparator();
 			menu.addItem((i) => i.setTitle("Copy session ID").setIcon("hash").onClick(() => void plugin.copy(run.sessionId, "Session ID copied")));
 			menu.addItem((i) =>
 				i

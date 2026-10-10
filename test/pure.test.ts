@@ -9,6 +9,7 @@ import {
 import {
 	buildBashScript,
 	buildCopyCommand,
+	buildStartCommand,
 	buildPowershellScript,
 	escapeForLegacyNative,
 	newSessionArgs,
@@ -126,4 +127,21 @@ test("transcript summary", () => {
 	assert.equal(s.title, "My name");
 	assert.equal(s.gitBranch, "main");
 	assert.equal(s.lastTime, "2026-10-10T10:04:00Z");
+});
+
+test("start command: console window (unchanged from before)", () => {
+	const program = `"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo -NoExit -File "C:\\T\\x.ps1"`;
+	assert.equal(buildStartCommand({ title: 'My "note" 100%', program, terminal: "console" }), `start "My note 100" ${program}`);
+});
+
+test("start command: Windows Terminal tab / window", () => {
+	const program = `wsl.exe -d "Ubuntu" --cd ~ --exec bash -lic "source '/mnt/c/T/x.sh'"`;
+	const wt = "C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe";
+	assert.equal(
+		buildStartCommand({ title: "a; b", program, terminal: "windows-terminal", wtExe: wt }),
+		`start "" "${wt}" -w 0 new-tab --title "a b" ${program}`,
+	);
+	assert.match(buildStartCommand({ title: "t", program: "x;y", terminal: "windows-terminal", wtExe: wt, wtNewWindow: true }), /-w new new-tab --title "t" x\\;y$/);
+	// No wt.exe found → falls back to a console window.
+	assert.equal(buildStartCommand({ title: "t", program: "p", terminal: "windows-terminal" }), `start "t" p`);
 });

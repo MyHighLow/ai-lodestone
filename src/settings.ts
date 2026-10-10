@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type LodestonePlugin from "./main";
-import { resolvePowershellExe } from "./launcher";
+import { findWindowsTerminal, resolvePowershellExe } from "./launcher";
+import type { TerminalApp } from "./scripts";
 import type { Env } from "./types";
 
 export class LodestoneSettingTab extends PluginSettingTab {
@@ -27,6 +28,61 @@ export class LodestoneSettingTab extends PluginSettingTab {
 					.setValue(s.defaultEnv)
 					.onChange((v) => void this.plugin.setDefaultEnv(v as Env)),
 			);
+
+		new Setting(containerEl)
+			.setName("Terminal app")
+			.setDesc("Where sessions open. If Windows Terminal can't be found, a console window is used.")
+			.addDropdown((d) =>
+				d
+					.addOptions({ "windows-terminal": "Windows Terminal (if installed)", console: "Console window" })
+					.setValue(s.terminalApp)
+					.onChange(async (v) => {
+						s.terminalApp = v as TerminalApp;
+						await save();
+						this.display();
+					}),
+			);
+
+		if (s.terminalApp === "windows-terminal") {
+			const wtPath = new Setting(containerEl)
+				.setName("Windows Terminal path")
+				.setDesc("Leave empty to auto-detect.")
+				.addText((t) => {
+					t.setPlaceholder("D:\\Apps\\terminal\\wt.exe")
+						.setValue(s.windowsTerminalPath)
+						.onChange(async (v) => {
+							s.windowsTerminalPath = v.trim();
+							await save();
+							void showFound();
+						});
+					t.inputEl.addClass("lodestone-setting-wide");
+				});
+			const showFound = async () => {
+				const found = await findWindowsTerminal(s.windowsTerminalPath);
+				const how = s.windowsTerminalPath ? "" : "Leave empty to auto-detect. ";
+				wtPath.setDesc(
+					found
+						? `${how}Using ${found}`
+						: s.windowsTerminalPath
+							? "No file at that path."
+							: `${how}Not found: point this at wt.exe or WindowsTerminal.exe.`,
+				);
+			};
+			void showFound();
+
+			new Setting(containerEl)
+				.setName("Windows Terminal window")
+				.setDesc("Open each session as a tab in your most recent Windows Terminal window, or in a window of its own.")
+				.addDropdown((d) =>
+					d
+						.addOptions({ tab: "New tab in last-used window", window: "New window" })
+						.setValue(s.wtNewWindow ? "window" : "tab")
+						.onChange(async (v) => {
+							s.wtNewWindow = v === "window";
+							await save();
+						}),
+				);
+		}
 
 		new Setting(containerEl)
 			.setName("New-session prompt")
