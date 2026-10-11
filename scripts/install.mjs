@@ -1,4 +1,4 @@
-// Copies the built plugin into <vault>/.obsidian/plugins/lodestone/.
+// Copies the built plugin into <vault>/.obsidian/plugins/<id>/, where <id> is manifest.json's `id`.
 // Usage: node scripts/install.mjs ["D:\\Vaults\\MyVault" | /mnt/d/Vaults/MyVault]
 // The vault is remembered in .vault, so later runs need no argument.
 import fs from "node:fs";
@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const savedVaultFile = path.join(root, ".vault");
 const FILES = ["main.js", "manifest.json", "styles.css"];
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+export const logPrefix = `[${manifest.id}]`;
 
 /** Accepts a Windows path (when running under WSL) or a native path. */
 export function normalizeVaultPath(p) {
@@ -16,6 +18,18 @@ export function normalizeVaultPath(p) {
 		return `/mnt/${m[1].toLowerCase()}/${m[2].replace(/\\/g, "/")}`;
 	}
 	return p;
+}
+
+/**
+ * The plugin's folder in a vault. Obsidian expects it to be named after the manifest `id`,
+ * which must be lowercase letters, digits and dashes, so it can't point outside `plugins/`.
+ */
+export function pluginDir(vaultPath, manifest) {
+	const id = manifest?.id;
+	if (typeof id !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)) {
+		throw new Error(`manifest.json has no valid "id" (got ${JSON.stringify(id)})`);
+	}
+	return path.join(vaultPath, ".obsidian", "plugins", id);
 }
 
 export function readSavedVault() {
@@ -35,11 +49,11 @@ export function copyToVault(vault, { hotReload = false } = {}) {
 	if (!fs.existsSync(path.join(vaultPath, ".obsidian"))) {
 		throw new Error(`${vaultPath} doesn't look like a vault (no .obsidian folder)`);
 	}
-	const dest = path.join(vaultPath, ".obsidian", "plugins", "lodestone");
+	const dest = pluginDir(vaultPath, manifest);
 	fs.mkdirSync(dest, { recursive: true });
 	for (const f of FILES) fs.copyFileSync(path.join(root, f), path.join(dest, f));
 	if (hotReload) fs.closeSync(fs.openSync(path.join(dest, ".hotreload"), "a"));
-	console.log(`[lodestone] installed to ${dest}`);
+	console.log(`${logPrefix} installed to ${dest}`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -52,7 +66,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 		copyToVault(vault);
 		fs.writeFileSync(savedVaultFile, vault + "\n");
 	} catch (e) {
-		console.error(`[lodestone] ${e.message}`);
+		console.error(`${logPrefix} ${e.message}`);
 		process.exit(1);
 	}
 }

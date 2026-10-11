@@ -1,6 +1,6 @@
 import esbuild from "esbuild";
 import builtins from "builtin-modules";
-import { copyToVault, readSavedVault } from "./scripts/install.mjs";
+import { copyToVault, logPrefix, readSavedVault } from "./scripts/install.mjs";
 
 const prod = process.argv[2] === "production";
 
@@ -12,7 +12,7 @@ const copyPlugin = {
 			if (prod || result.errors.length) return;
 			const vault = readSavedVault();
 			if (!vault) {
-				console.log("[lodestone] built (no vault remembered; run `npm run install-plugin -- <vault>` once)");
+				console.log(`${logPrefix} built (no vault remembered; run \`npm run install-plugin -- <vault>\` once)`);
 				return;
 			}
 			copyToVault(vault, { hotReload: true });
