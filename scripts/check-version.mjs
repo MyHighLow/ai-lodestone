@@ -3,8 +3,8 @@
 //   next           prints the plain X.Y.Z tag HEAD already has (a re-run), or else the tag
 //                  the release workflow should create: one patch above the highest X.Y.Z tag
 //                  or the manifest version, whichever is higher.
-//   pr <base-sha>  exits non-zero if this branch changed a version field compared with the
-//                  PR's base commit. PRs never change the version; stable releases do (#3).
+//   pr <base-sha>  exits non-zero if committed HEAD changed a version field compared with
+//                  the base commit. PRs never change the version; stable releases do (#3).
 // Exits non-zero, printing why on stderr, on any failure.
 // Usage: node scripts/check-version.mjs next | pr <base-sha>
 import { execFileSync } from "node:child_process";
@@ -102,18 +102,21 @@ function gitTags(...args) {
 		.filter(Boolean);
 }
 
-/** The version files at `sha`. A file that doesn't exist there is null. */
+/**
+ * The version files at `sha`. A file that isn't in that commit (versions.json before it was
+ * added) is null. Throws if `sha` isn't a commit in this clone, rather than reading every file
+ * as missing and comparing nothing.
+ */
 function filesAt(sha) {
+	try {
+		git("cat-file", "-e", `${sha}^{commit}`);
+	} catch {
+		throw new Error(`commit ${sha} isn't in this clone. Fetch it and try again.`);
+	}
 	const out = {};
 	for (const [key, f] of Object.entries(FILES)) {
-		let text;
-		try {
-			text = git("show", `${sha}:${f}`);
-		} catch {
-			out[key] = null;
-			continue;
-		}
-		out[key] = JSON.parse(text);
+		const present = git("ls-tree", "--name-only", sha, "--", f).trim() !== "";
+		out[key] = present ? JSON.parse(git("show", `${sha}:${f}`)) : null;
 	}
 	return out;
 }

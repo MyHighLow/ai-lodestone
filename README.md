@@ -136,7 +136,7 @@ Versions are plain `X.Y.Z`, kept the same in `package.json`, `package-lock.json`
 - **Every merge to main is tagged.** `.github/workflows/release.yml` tags the merge commit with the next plain `X.Y.Z` (no `v`): one patch above the highest tag, or above main's version if that's higher. Docs-only merges are skipped. CI makes no commit, so main's version files don't move.
 - **PRs don't change the version.** The **Version check** workflow fails a PR that changes the `version` field in `package.json`, `package-lock.json` or `manifest.json`, or anything in `versions.json`. Other `manifest.json` edits are fine.
 - **Main's `manifest.json` holds the latest stable version.** It changes only in a stable release, which is also where minor and major bumps are chosen. The community store reads it to find the version to install.
-- **Tags are only created by CI.** `npm version` never commits or tags here (`.npmrc` sets `git-tag-version=false`); its `version` script copies the version into `manifest.json` and `versions.json`. To run the checks locally: `node scripts/check-version.mjs next` prints the tag CI would create, and `node scripts/check-version.mjs pr <base-sha>` runs the PR check.
+- **Tags are only created by CI.** `npm version` never commits or tags here (`.npmrc` sets `git-tag-version=false`); its `version` script copies the version into `manifest.json` and `versions.json`. To run the checks locally, fetch first: `node scripts/check-version.mjs next` prints the tag CI would create (it fails on a branch that's behind the latest tag), and `node scripts/check-version.mjs pr <base-sha>` runs the PR check against committed `HEAD`, so commit before running it.
 
 ### Knowledge base
 
