@@ -27,7 +27,7 @@ The code is split so that everything risky (quoting, parsing, sanitizing) is pur
 
 Rule of thumb: logic that decides *what text* reaches a shell or claude belongs in a pure module with tests. The impure modules should only do I/O with the result.
 
-Pure modules that the tests load import each other with an explicit `.ts` extension (for example `import { stripInvisible } from "./sanitize.ts"` in `scripts.ts`), because Node runs them directly. `tsconfig.json` sets `allowImportingTsExtensions` for this.
+Modules that the tests load import each other with an explicit `.ts` extension (for example `import { stripInvisible } from "./sanitize.ts"` in `scripts.ts`), because Node runs them directly. That's the pure modules, plus `launcher.ts`, whose non-Windows paths are tested. `tsconfig.json` sets `allowImportingTsExtensions` for this.
 
 ## Launch flow
 

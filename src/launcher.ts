@@ -3,8 +3,11 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { buildBashScript, buildLaunchCommand, buildPowershellScript, windowsToWsl, type LaunchSpec, type LaunchTarget, type TerminalApp } from "./scripts";
+import { buildBashScript, buildLaunchCommand, buildPowershellScript, windowsToWsl, type LaunchSpec, type LaunchTarget, type TerminalApp } from "./scripts.ts";
 import type { LodestoneSettings } from "./types";
+
+/** Shown when launching off Windows, and once at load time there (main.ts). */
+export const WINDOWS_ONLY = "AI Lodestone currently launches terminals on Windows only.";
 
 const PWSH7 = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
 
@@ -104,7 +107,7 @@ export async function launchInTerminal(
 	title: string,
 	settings: LodestoneSettings,
 ): Promise<{ terminal: TerminalApp; fallbackReason?: string }> {
-	if (process.platform !== "win32") throw new Error("Lodestone currently launches terminals on Windows only.");
+	if (process.platform !== "win32") throw new Error(WINDOWS_ONLY);
 
 	const base = path.join(os.tmpdir(), `lodestone-${crypto.randomBytes(6).toString("hex")}`);
 	const file = base + (spec.env === "powershell" ? ".ps1" : ".sh");

@@ -1,4 +1,4 @@
-# Lodestone
+# AI Lodestone
 
 An Obsidian plugin for starting, saving and resuming [Claude Code](https://claude.com/claude-code) sessions from your notes, in either PowerShell or WSL.
 
@@ -14,7 +14,7 @@ npm install
 npm run install-plugin -- "D:\Vaults\MyVault"
 ```
 
-Then in Obsidian, open **Settings → Community plugins**, turn off Restricted mode if it's on, and enable **Lodestone**. You may need to click the reload icon next to "Installed plugins" first.
+Then in Obsidian, open **Settings → Community plugins**, turn off Restricted mode if it's on, and enable **AI Lodestone**. You may need to click the reload icon next to "Installed plugins" first.
 
 The vault path can be a Windows path or a `/mnt/d/…` path. It's remembered in `.vault`.
 
@@ -25,6 +25,18 @@ npm run install-plugin
 ```
 
 This rebuilds and copies into the remembered vault. Then toggle the plugin off and on in Obsidian, or restart Obsidian.
+
+### Moving from an install named Lodestone
+
+The plugin used to be called Lodestone, with the id `lodestone`. It's now AI Lodestone (`ai-lodestone`), because the old id was already taken in Obsidian's community plugins. Obsidian keeps each plugin in a folder named after its id, so an existing install needs moving once:
+
+1. Quit Obsidian, so the old copy can't write its settings again.
+2. Install the new version as above. It goes into `<vault>/.obsidian/plugins/ai-lodestone/`.
+3. Move `data.json` (your settings and session history) from `<vault>/.obsidian/plugins/lodestone/` into the new `ai-lodestone` folder.
+4. Delete the old `lodestone` folder, so there aren't two copies.
+5. Open Obsidian and enable **AI Lodestone** under **Settings → Community plugins**.
+
+Notes and their `claude-session` and `claude-prompt` blocks don't change. Hotkeys you set for its commands don't carry over, because Obsidian stores them by plugin id: set them again under **Settings → Hotkeys**.
 
 ### Updating while you develop
 
@@ -53,7 +65,7 @@ Session ID:        3f8a2c1e-9b47-4d6a-a5e2-7c0d1b9e4f36
 ````
 
 - **Title**: anything after `claude-session` on the first line becomes the card's title. Without it, the card uses the session name, or else the session's auto-generated title.
-- **Card details**: Lodestone finds the session's saved conversation file in both your Windows and WSL `~/.claude/projects` folders. It shows which install owns the session, when it was last active, how many prompts it has, its working directory, and your latest prompt.
+- **Card details**: AI Lodestone finds the session's saved conversation file in both your Windows and WSL `~/.claude/projects` folders. It shows which install owns the session, when it was last active, how many prompts it has, its working directory, and your latest prompt.
 - **Resume** opens the session in the install that owns it, from the session's original folder. A session belongs to the shell it was created in, so it always resumes there, whatever the default is. The right-click menu says which shell owns it. If the transcript can't be found, the default is used.
 - **Copy command** copies a `cd … ; claude --resume <id>` line to paste into your own terminal.
 
@@ -85,7 +97,7 @@ Summarize {{file}} and list the action items.
 
 ### 4. Browse recent sessions
 
-The command **Browse recent sessions** lists every session Lodestone has started or resumed, including ones from the header button. You can search by title, note or ID.
+The command **Browse recent sessions** lists every session AI Lodestone has started or resumed, including ones from the header button. You can search by title, note or ID.
 
 - **Enter** resumes the selected session.
 - **Ctrl+Enter** inserts it as a `claude-session` block at the cursor.
@@ -106,13 +118,23 @@ The command **Browse recent sessions** lists every session Lodestone has started
 | WSL sessions folder | auto-detected | Found by running `wslpath -w ~/.claude/projects`. |
 | Windows drive mount root | `/mnt` | Used to convert `D:\x` into `/mnt/d/x`. |
 
+## Disclosures
+
+AI Lodestone's job is to start programs outside Obsidian, so it does more than most plugins:
+
+- **It runs programs on your computer:** `cmd.exe` (to open each window), Windows PowerShell or `pwsh`, `wsl.exe`, Windows Terminal (`wt.exe`) if you use it, and `claude`, inside the window it opens. To find things, it also runs `wslpath` inside WSL (where WSL keeps sessions) and Windows PowerShell (to look for a Windows Terminal shortcut).
+- **It reads files outside your vault:** session transcripts in `~/.claude/projects`, in Windows and in WSL (or the folders set in settings), and the Start Menu and taskbar shortcuts while looking for Windows Terminal.
+- **It writes files outside your vault:** each launch writes a short script to your temp folder, which the new window runs and then deletes.
+- **It uses the clipboard:** Copy command buttons write to it, and **Insert Claude session block** reads it to fill in the block.
+- **No network access and no telemetry.** It makes no network requests itself and sends nothing anywhere. Claude Code, once started, is a separate program with its own behaviour.
+
 ## Troubleshooting
 
-- **The WSL window opens, but `claude: command not found`.** Lodestone runs `bash -lic`, so anything your `~/.bashrc` or `~/.profile` adds to PATH is available. If claude lives somewhere else, set **Claude command (WSL)** to its full path.
+- **The WSL window opens, but `claude: command not found`.** AI Lodestone runs `bash -lic`, so anything your `~/.bashrc` or `~/.profile` adds to PATH is available. If claude lives somewhere else, set **Claude command (WSL)** to its full path.
 - **The session card says "not found".** Check that the session folder settings point to the right place. Auto-detection asks WSL and gives up after 15 seconds; if it fails, set **WSL sessions folder** by hand. Changing the WSL distro or a sessions-folder setting retries detection. A session that was just started only gets a transcript after its first message.
 - **Resume says the session doesn't exist.** Sessions belong to one install. A session created in WSL can't be resumed by Windows claude, and the reverse is also true. The card's badge shows which install owns it.
 
-- **A notice says it used a console window because a path contains `%`.** Windows Terminal expands `%NAME%` in the command it's given and can't escape it, so if your temp folder (usually under your Windows user name) contains `%`, Lodestone uses a console window for that launch instead.
+- **A notice says it used a console window because a path contains `%`.** Windows Terminal expands `%NAME%` in the command it's given and can't escape it, so if your temp folder (usually under your Windows user name) contains `%`, AI Lodestone uses a console window for that launch instead.
 - **Sessions open in a console window instead of Windows Terminal.** Check **Windows Terminal path** in settings; it shows what was detected. For a portable copy with no shortcut, point it at `wt.exe` in the folder you unzipped.
 
 ## Development

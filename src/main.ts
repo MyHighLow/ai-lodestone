@@ -4,7 +4,7 @@ import { registerPromptBlock } from "./blocks/promptBlock";
 import { registerSessionBlock } from "./blocks/sessionBlock";
 import { HistoryModal } from "./historyModal";
 import { LODESTONE_ICON, registerIcons } from "./icon";
-import { findWindowsTerminal, launchInTerminal } from "./launcher";
+import { WINDOWS_ONLY, findWindowsTerminal, launchInTerminal } from "./launcher";
 import { formatSessionBlock, PROMPT_LANG, UUID_RE, parseSessionBody } from "./parse";
 import { buildCopyCommand, newSessionArgs, resumeArgs, windowsToWsl, type LaunchSpec, type TerminalApp } from "./scripts";
 import { SessionStore, type SessionInfo } from "./sessions";
@@ -49,6 +49,8 @@ export default class LodestonePlugin extends Plugin {
 		this.addSettingTab(new LodestoneSettingTab(this.app, this));
 
 		this.app.workspace.onLayoutReady(() => {
+			// The community store can't filter by OS, so say up front that nothing will launch here.
+			if (process.platform !== "win32") new Notice(`${WINDOWS_ONLY} Blocks still render, but no terminal will open.`, 10000);
 			this.addHeaderButtons();
 			if (this.settings.terminalApp === "windows-terminal") void findWindowsTerminal(this.settings.windowsTerminalPath);
 		});
@@ -189,7 +191,7 @@ export default class LodestonePlugin extends Plugin {
 
 	vaultBasePath(): string {
 		const adapter = this.app.vault.adapter;
-		if (!(adapter instanceof FileSystemAdapter)) throw new Error("Lodestone needs a desktop vault.");
+		if (!(adapter instanceof FileSystemAdapter)) throw new Error("AI Lodestone needs a desktop vault.");
 		return adapter.getBasePath();
 	}
 
@@ -245,7 +247,7 @@ export default class LodestonePlugin extends Plugin {
 		try {
 			await this.openTerminal(spec, opts.title);
 		} catch (e) {
-			new Notice(`Lodestone: couldn't launch Claude: ${(e as Error).message}`);
+			new Notice(`AI Lodestone: couldn't launch Claude: ${(e as Error).message}`);
 			return null;
 		}
 		new Notice(`Claude started in ${ENV_LABEL[opts.env]}`);
@@ -284,7 +286,7 @@ export default class LodestonePlugin extends Plugin {
 		try {
 			await this.openTerminal(spec, title);
 		} catch (e) {
-			new Notice(`Lodestone: couldn't resume: ${(e as Error).message}`);
+			new Notice(`AI Lodestone: couldn't resume: ${(e as Error).message}`);
 			return;
 		}
 		const past = this.history.find((h) => h.sessionId === sessionId);
@@ -302,10 +304,10 @@ export default class LodestonePlugin extends Plugin {
 	private async openTerminal(spec: LaunchSpec, title: string) {
 		const { terminal, fallbackReason } = await launchInTerminal(spec, title, this.settings);
 		if (fallbackReason) {
-			new Notice(`Lodestone: opened a console window instead of Windows Terminal, because ${fallbackReason}.`, 8000);
+			new Notice(`AI Lodestone: opened a console window instead of Windows Terminal, because ${fallbackReason}.`, 8000);
 		} else if (this.settings.terminalApp === "windows-terminal" && terminal !== "windows-terminal" && !this.warnedNoWindowsTerminal) {
 			this.warnedNoWindowsTerminal = true;
-			new Notice("Lodestone: couldn't find Windows Terminal, so a console window was used instead. Set its path in Lodestone's settings.", 8000);
+			new Notice("AI Lodestone: couldn't find Windows Terminal, so a console window was used instead. Set its path in AI Lodestone's settings.", 8000);
 		}
 	}
 

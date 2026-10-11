@@ -1,9 +1,10 @@
 {
-  "id": "lodestone",
-  "name": "Lodestone",
+  "id": "ai-lodestone",
+  "name": "AI Lodestone",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Launch, record and resume Claude Code sessions (PowerShell or WSL) from your notes.",
+  "description": "Launch, record and resume Claude Code sessions (PowerShell or WSL) from your notes. Windows only.",
   "author": "MyHighLow",
+  "authorUrl": "https://github.com/MyHighLow",
   "isDesktopOnly": true
 }

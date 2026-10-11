@@ -158,7 +158,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 		const version = agreedVersion(Object.fromEntries(Object.entries(FILES).map(([k, f]) => [k, readJson(f)])));
 		console.log(mode === "next" ? next(version) : pr(arg));
 	} catch (e) {
-		console.error(`[lodestone] ${e.message}`);
+		console.error(`[ai-lodestone] ${e.message}`);
 		process.exit(1);
 	}
 }
