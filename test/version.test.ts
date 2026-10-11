@@ -104,25 +104,31 @@ test("version: PR check flags only version fields", () => {
 
 // The CLI, run in a throwaway git repo with a copy of the script.
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "check-version.mjs");
-// Without inherited GIT_* variables: git exports GIT_DIR to hooks, `!` aliases and
-// `rebase --exec` run in a linked worktree, which would point every git call here at the real
-// repository instead of the temp one.
-const gitEnv = {
-	...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
-	GIT_CONFIG_GLOBAL: os.devNull,
-	GIT_CONFIG_NOSYSTEM: "1",
-	GIT_AUTHOR_NAME: "test",
-	GIT_AUTHOR_EMAIL: "test@users.noreply.github.com",
-	GIT_COMMITTER_NAME: "test",
-	GIT_COMMITTER_EMAIL: "test@users.noreply.github.com",
-};
 
-function repo(t: { after: (fn: () => void) => void }) {
+/**
+ * `parent` without its GIT_* variables: git exports GIT_DIR to hooks, `!` aliases and
+ * `rebase --exec` run in a linked worktree, which would point every git call here at the real
+ * repository instead of the temp one. No user or system git config either.
+ */
+function gitEnv(parent: NodeJS.ProcessEnv) {
+	return {
+		...Object.fromEntries(Object.entries(parent).filter(([k]) => !k.startsWith("GIT_"))),
+		GIT_CONFIG_GLOBAL: os.devNull,
+		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_AUTHOR_NAME: "test",
+		GIT_AUTHOR_EMAIL: "test@users.noreply.github.com",
+		GIT_COMMITTER_NAME: "test",
+		GIT_COMMITTER_EMAIL: "test@users.noreply.github.com",
+	};
+}
+
+function repo(t: { after: (fn: () => void) => void }, parentEnv: NodeJS.ProcessEnv = process.env) {
+	const env = gitEnv(parentEnv);
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lodestone-version-"));
 	t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 	fs.mkdirSync(path.join(dir, "scripts"));
 	fs.copyFileSync(script, path.join(dir, "scripts", "check-version.mjs"));
-	const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, env: gitEnv, encoding: "utf8" }).trim();
+	const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, env, encoding: "utf8" }).trim();
 	const write = (v: string, { versions = true, name = "Lodestone" } = {}) => {
 		const json = (f: string, data: unknown) => fs.writeFileSync(path.join(dir, f), JSON.stringify(data, null, 2) + "\n");
 		json("package.json", { name: "lodestone", version: v });
@@ -136,12 +142,33 @@ function repo(t: { after: (fn: () => void) => void }) {
 		return git("rev-parse", "HEAD");
 	};
 	const run = (...args: string[]) => {
-		const r = spawnSync(process.execPath, ["scripts/check-version.mjs", ...args], { cwd: dir, env: gitEnv, encoding: "utf8" });
+		const r = spawnSync(process.execPath, ["scripts/check-version.mjs", ...args], { cwd: dir, env, encoding: "utf8" });
 		return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() };
 	};
 	git("init", "-q", "-b", "main");
-	return { git, write, commit, run };
+	return { dir, git, write, commit, run };
 }
+
+test("version CLI: ignores GIT_* variables inherited from a worktree hook", (t) => {
+	const decoy = repo(t);
+	decoy.write("0.1.0");
+	decoy.commit("decoy");
+	// What a hook run from a linked worktree inherits, aimed at the decoy instead of the real
+	// repository.
+	const r = repo(t, {
+		...process.env,
+		GIT_DIR: path.join(decoy.dir, ".git"),
+		GIT_INDEX_FILE: path.join(decoy.dir, ".git", "index"),
+	});
+	r.write("0.1.0");
+	r.commit("first");
+	r.git("tag", "0.1.1");
+	assert.equal(r.run("next").out, "0.1.1");
+	assert.equal(decoy.git("rev-list", "--count", "--all"), "1");
+	assert.equal(decoy.git("tag", "-l"), "");
+	assert.equal(decoy.git("config", "core.bare"), "false");
+	assert.equal(decoy.git("status", "--porcelain"), "");
+});
 
 test("version CLI: next", (t) => {
 	const r = repo(t);

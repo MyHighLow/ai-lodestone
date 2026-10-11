@@ -1,8 +1,9 @@
 // Version checks shared by the PR check and the release workflow. See "Versioning" in README.md.
 // Both modes first check that the version files agree.
-//   next           prints the plain X.Y.Z tag HEAD already has (a re-run), or else the tag
-//                  the release workflow should create: one patch above the highest X.Y.Z tag
-//                  or the manifest version, whichever is higher.
+//   next           prints the highest plain X.Y.Z tag HEAD already has (a re-run), or else
+//                  the tag the release workflow should create: one patch above the highest
+//                  X.Y.Z tag or the manifest version, whichever is higher. Fails instead if
+//                  that highest tag isn't an ancestor of HEAD: a newer commit is tagged.
 //   pr <base-sha>  exits non-zero if committed HEAD changed a version field compared with
 //                  the base commit. PRs never change the version; stable releases do (#3).
 // Exits non-zero, printing why on stderr, on any failure.

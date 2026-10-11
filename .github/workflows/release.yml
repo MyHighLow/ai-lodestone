@@ -3,9 +3,9 @@
 # stable release. See "Versioning" in README.md.
 #
 # Security: third-party code (npm dependencies) only runs in the read-only `verify` job. The
-# `tag` job, the only one that can write, runs nothing but git and a dependency-free script in
-# this repo. It uses GITHUB_TOKEN, so its tag push doesn't start other workflows. No commit
-# message, PR title or other user-written text is used in a run: step.
+# `tag` job, the only one that can write, runs nothing but actions/checkout, git and a
+# dependency-free script in this repo. It uses GITHUB_TOKEN, so its tag push doesn't start
+# other workflows. No commit message, PR title or other user-written text is used in a run: step.
 name: Release
 
 on:
@@ -50,8 +50,9 @@ jobs:
       group: tag-main
       cancel-in-progress: false
     outputs:
-      # The tag on this commit, new or (on a re-run) existing. For #3 (release artifacts) to
-      # hook into with `needs: tag`: tags pushed with GITHUB_TOKEN don't trigger other workflows.
+      # The tag on this commit: the one just created or, on a re-run, the highest version tag
+      # the commit already has. For #3 (release artifacts) to hook into with `needs: tag`: tags
+      # pushed with GITHUB_TOKEN don't trigger other workflows.
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       # No setup-node: it would get the write token as an input. The runner's Node runs the
