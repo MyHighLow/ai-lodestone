@@ -1,3 +1,12 @@
 node_modules/
 main.js
 .vault
+
+# Claude Code setup stays local unless explicitly published (see docs/kb/claude-config-in-git.md).
+# Default-deny: only the allowlisted skills below are tracked.
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/knowledge-base/
+CLAUDE.md
+CLAUDE.local.md

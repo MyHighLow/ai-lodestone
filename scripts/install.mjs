@@ -26,7 +26,11 @@ export function readSavedVault() {
 	}
 }
 
-export function copyToVault(vault) {
+/**
+ * `hotReload`: also create an empty `.hotreload` file, the marker the Hot Reload plugin
+ * needs before it reloads a plugin folder that isn't a git checkout.
+ */
+export function copyToVault(vault, { hotReload = false } = {}) {
 	const vaultPath = normalizeVaultPath(vault);
 	if (!fs.existsSync(path.join(vaultPath, ".obsidian"))) {
 		throw new Error(`${vaultPath} doesn't look like a vault (no .obsidian folder)`);
@@ -34,6 +38,7 @@ export function copyToVault(vault) {
 	const dest = path.join(vaultPath, ".obsidian", "plugins", "lodestone");
 	fs.mkdirSync(dest, { recursive: true });
 	for (const f of FILES) fs.copyFileSync(path.join(root, f), path.join(dest, f));
+	if (hotReload) fs.closeSync(fs.openSync(path.join(dest, ".hotreload"), "a"));
 	console.log(`[lodestone] installed to ${dest}`);
 }
 

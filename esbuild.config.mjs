@@ -15,7 +15,7 @@ const copyPlugin = {
 				console.log("[lodestone] built (no vault remembered; run `npm run install-plugin -- <vault>` once)");
 				return;
 			}
-			copyToVault(vault);
+			copyToVault(vault, { hotReload: true });
 		});
 	},
 };

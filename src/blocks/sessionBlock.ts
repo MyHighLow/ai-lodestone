@@ -2,17 +2,22 @@ import type LodestonePlugin from "../main";
 import type { Env } from "../types";
 import { LODESTONE_ICON } from "../icon";
 import { parseSessionBody, SESSION_LANG } from "../parse";
+import { stripInvisible } from "../sanitize";
 import { relativeTime, truncate } from "../util";
 import { button, cardHeader, envBadge, fenceTitle, isolate } from "./common";
 
 export function registerSessionBlock(plugin: LodestonePlugin) {
 	plugin.registerMarkdownCodeBlockProcessor(SESSION_LANG, (source, el, ctx) => {
 		const block = parseSessionBody(source);
-		const override = fenceTitle(el, ctx, SESSION_LANG);
+		// Same as prompt blocks: hidden characters could make a card read differently from
+		// the session it resumes, so titles and names are shown without them.
+		const visible = (text: string | null | undefined) => (text ? stripInvisible(text).text.trim() || null : null);
+		const override = visible(fenceTitle(el, ctx, SESSION_LANG));
+		const name = visible(block.name);
 		const card = el.createDiv({ cls: "lodestone-card lodestone-session" });
 		isolate(card);
 
-		const { titleEl, right } = cardHeader(card, LODESTONE_ICON, override ?? block.name ?? "Claude session");
+		const { titleEl, right } = cardHeader(card, LODESTONE_ICON, override ?? name ?? "Claude session");
 		if (!block.sessionId) {
 			card.createDiv({
 				cls: "lodestone-error",
@@ -25,7 +30,7 @@ export function registerSessionBlock(plugin: LodestonePlugin) {
 		badgeSlot.createSpan({ cls: "lodestone-badge", text: "…" });
 
 		const sub = card.createDiv({ cls: "lodestone-sub" });
-		if (override && block.name) sub.createSpan({ text: block.name });
+		if (override && name) sub.createSpan({ text: name });
 		sub.createSpan({ cls: "lodestone-mono", text: sessionId });
 
 		const meta = card.createDiv({ cls: "lodestone-meta" });
@@ -56,9 +61,8 @@ export function registerSessionBlock(plugin: LodestonePlugin) {
 			}
 			ownedBy = info.env;
 			envBadge(badgeSlot, info.env);
-			if (!override && !block.name && (info.title || info.firstPrompt)) {
-				titleEl.setText(info.title ?? truncate(info.firstPrompt!, 80));
-			}
+			const found = visible(info.title) ?? (info.firstPrompt ? visible(truncate(info.firstPrompt, 80)) : null);
+			if (!override && !name && found) titleEl.setText(found);
 			const parts: string[] = [];
 			if (info.lastTime) parts.push(`active ${relativeTime(info.lastTime)}`);
 			parts.push(`${info.promptCount} prompt${info.promptCount === 1 ? "" : "s"}`);
