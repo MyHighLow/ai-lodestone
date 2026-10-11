@@ -1,0 +1,77 @@
+# Tags each push to main with the next plain X.Y.Z version, on the merge commit itself. It
+# makes no commit: main's version files hold the latest stable version and change only in a
+# stable release. See "Versioning" in README.md.
+#
+# Security: third-party code (npm dependencies) only runs in the read-only `verify` job. The
+# `tag` job, the only one that can write, runs nothing but git and a dependency-free script in
+# this repo. It uses GITHUB_TOKEN, so its tag push doesn't start other workflows. No commit
+# message, PR title or other user-written text is used in a run: step.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    # Docs-only changes don't make a release.
+    paths:
+      - "**"
+      - "!**.md"
+      - "!.github/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  tag:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Tags follow merge order. A run still waiting here is cancelled when a newer one queues;
+    # its changes ship in the newer tag. Don't put other workflows in this group: a merge
+    # would cancel them while they wait.
+    concurrency:
+      group: tag-main
+      cancel-in-progress: false
+    outputs:
+      # The tag on this commit, new or (on a re-run) existing. For #3 (release artifacts) to
+      # hook into with `needs: tag`: tags pushed with GITHUB_TOKEN don't trigger other workflows.
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0 # tags
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Tag and push
+        id: tag
+        run: |
+          tag=$(node scripts/check-version.mjs next)
+          if [ -n "$(git tag -l --points-at "$GITHUB_SHA" "$tag")" ]; then
+            echo "$GITHUB_SHA is already tagged $tag"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "Lodestone $tag" "$GITHUB_SHA"
+            # Not forced: if the tag already exists, the push and the run fail.
+            git push origin "refs/tags/$tag"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
