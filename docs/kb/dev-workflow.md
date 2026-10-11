@@ -14,7 +14,7 @@ Install and update steps for users are in the [README](../../README.md). This en
 | --- | --- |
 | `npm test` | Runs `test/*.test.ts` with `node --experimental-strip-types --test`. |
 | `npm run build` | `tsc --noEmit` (typecheck), then an esbuild production bundle to `main.js`. |
-| `npm run dev` | esbuild in watch mode. After each successful rebuild it copies the plugin into the remembered vault. With the **Hot Reload** community plugin in that vault, Obsidian reloads it by itself. |
+| `npm run dev` | esbuild in watch mode. After each successful rebuild it copies the plugin into the remembered vault. It also creates an empty `.hotreload` file in the plugin folder, which the **Hot Reload** community plugin needs before it reloads a folder that isn't a git checkout. With Hot Reload in that vault, Obsidian reloads Lodestone by itself. |
 | `npm run install-plugin [-- <vault>]` | Production build, then copies `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/lodestone/`. |
 
 ## Gotchas
@@ -23,7 +23,7 @@ Install and update steps for users are in the [README](../../README.md). This en
 - **Only the pure modules are tested** (see [architecture.md](architecture.md)). Anything that imports `obsidian`, or launches processes, needs a manual check in a real vault on Windows. Launching throws on any platform other than Windows.
 - **`.vault`** remembers the vault path from the last `install-plugin` and is gitignored. It can be a Windows path or a `/mnt/d/…` path; Windows paths are converted when running under WSL. The target must contain a `.obsidian` folder.
 - `main.js` is a build output and is gitignored.
-- The Obsidian API package is pinned to `latest` in `package.json`.
+- The `obsidian` API package is `latest` in `package.json`, so only `package-lock.json` pins its version. Expect type changes when the lockfile is refreshed.
 
 ## Knowledge base
 

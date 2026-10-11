@@ -35,7 +35,7 @@ The prompt comes from a note, so it is untrusted text. It is written into a temp
 - `wt.exe` expands `%VARS%` in the command line it's given, a second time, and has no way to escape `%`. So if a value wt would read contains `%`, the launch falls back to a console window and tells the user why (`fallbackReason`).
 - `wt` splits its own command line on `;`. A literal semicolon is `\;`.
 - The window title goes through `consoleTitle`, which removes `"`, `%`, `;`, control and invisible characters and caps the length at 80.
-- Detection (`findWindowsTerminal`): the path from settings if set; otherwise the Store alias, winget and scoop locations; otherwise a Start Menu or taskbar shortcut that points at Windows Terminal. It runs once per Obsidian session.
+- Detection (`findWindowsTerminal`): the path from settings if set; otherwise the Store alias, winget and scoop locations; otherwise a Start Menu or taskbar shortcut that points at Windows Terminal. Auto-detection runs once per Obsidian session; a path from settings is checked again on every launch.
   - The Store `wt.exe` is an app execution alias that `stat` can't follow, so existence checks use `lstat`.
   - Shortcuts on the Desktop or in download folders are deliberately ignored: that's where extracted archives and cloned repos land, and a planted shortcut would choose the program every launch runs.
   - Given `WindowsTerminal.exe`, it prefers the sibling `wt.exe`.
@@ -48,7 +48,7 @@ The launch runs `wsl.exe [-d <distro>] --cd ~ --exec bash -lic "source '<script>
 - The script path is shell-quoted (`shQuote`), which covers user names with apostrophes and an unusual mount root.
 - The script `cd`s to the session folder, runs claude, then `exec bash -l` so a shell stays open in that folder after claude exits.
 - The claude command itself is *not* quoted in bash, so users can set it to `npx claude` or an alias.
-- Windows paths are converted with the **Windows drive mount root** setting (`/mnt` by default): `D:\x` becomes `/mnt/d/x`, and `\\wsl.localhost\<distro>\home\x` becomes `/home/x`.
+- Windows paths are converted with the **Windows drive mount root** setting (`/mnt` by default): `D:\x` becomes `/mnt/d/x`, and `\\wsl.localhost\<distro>\home\<name>` becomes `/home/<name>`.
 
 ## PowerShell
 

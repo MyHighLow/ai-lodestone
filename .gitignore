@@ -8,3 +8,5 @@ main.js
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/knowledge-base/
+CLAUDE.md
+CLAUDE.local.md

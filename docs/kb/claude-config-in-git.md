@@ -6,7 +6,7 @@ updated: 2026-10-11
 
 # Claude Code setup in version control
 
-**Decision (issue #7):** only Claude Code configuration that the owner explicitly asks to publish goes into version control. Today that is just the `knowledge-base` skill. Everything else under `.claude/` (other skills, instructions, settings) and `CLAUDE.md` stays local to each checkout.
+**Decision (issue #7):** only Claude Code configuration that the owner explicitly asks to publish goes into version control. Today that is just the `knowledge-base` skill. Everything else under `.claude/` (other skills, instructions, settings), `CLAUDE.md` and `CLAUDE.local.md` stays local to each checkout.
 
 ## How it's enforced
 
@@ -17,6 +17,8 @@ The tracked `.gitignore` uses a default-deny allowlist:
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/knowledge-base/
+CLAUDE.md
+CLAUDE.local.md
 ```
 
 Git can't re-include a file inside a directory that is itself excluded. So `.claude/` must not be excluded as a whole anywhere, including a checkout's local `.git/info/exclude`. Exclude its contents (`.claude/*`) instead, as above.

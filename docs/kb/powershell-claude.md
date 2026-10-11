@@ -27,7 +27,7 @@ PowerShell has changed how it builds native command lines, and older versions ma
 | Native `claude.exe` on Windows PowerShell 5.1 | Starts it with `System.Diagnostics.ProcessStartInfo`, using a command line built by `windowsArg` (MSVC / `CommandLineToArgvW` rules). No pre-escaping can fix 5.1's handling of `"`. |
 | Native `claude.exe` on PowerShell 6–7.2, or 7.3+ with `$PSNativeCommandArgumentPassing = 'Legacy'` | Passes arguments pre-escaped by `escapeForLegacyNative`. These versions quote correctly except for `"`. |
 | A PowerShell script (`claude.ps1`) on those older versions, when an argument needs escaping | Refuses with a message. The `.ps1` passes the arguments on to `node.exe` with this PowerShell's quoting, which can't be pre-escaped reliably. Sending a different prompt is worse than not starting. |
-| PowerShell 7.3+ (Standard mode), or any `.ps1` when no escaping is needed | Passes arguments as they are. |
+| PowerShell 7.3+ in `Standard` or `Windows` mode (anything but `Legacy`), or any `.ps1` when no escaping is needed | Passes arguments as they are. |
 
 Gotchas behind the 5.1 branch:
 

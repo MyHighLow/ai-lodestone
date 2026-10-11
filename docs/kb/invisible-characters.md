@@ -26,7 +26,7 @@ A run of joiners or selectors fails these checks after its first character, so i
 
 - **After** placeholder expansion: a file name can carry hidden characters too. The prompt-block preview shows the expanded, stripped text, which is exactly what Run sends.
 - In `newSessionArgs` for every launch, as a last line of defense whatever built the prompt.
-- To block titles, session names (`sessionNameArg`, since hidden characters could spoof names in claude's `/resume` list) and window titles (`consoleTitle`).
+- To the titles and names shown on prompt and session cards (including a title taken from the session's transcript), the session name passed to claude (`sessionNameArg`, since hidden characters could spoof names in claude's `/resume` list), and window titles (`consoleTitle`).
 
 The prompt card says how many characters were removed.
 

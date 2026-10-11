@@ -28,7 +28,7 @@ This rebuilds and copies into the remembered vault. Then toggle the plugin off a
 
 ### Updating while you develop
 
-`npm run dev` rebuilds and re-copies into the remembered vault on every save. Install the community plugin **Hot Reload** in that vault, and Obsidian picks up each rebuild by itself.
+`npm run dev` rebuilds and re-copies into the remembered vault on every save. Install the community plugin **Hot Reload** in that vault, and Obsidian picks up each rebuild by itself. (The dev build adds the `.hotreload` marker file Hot Reload looks for.)
 
 To install into a different vault, pass its path again. The new path becomes the remembered one.
 
@@ -109,7 +109,7 @@ The command **Browse recent sessions** lists every session Lodestone has started
 ## Troubleshooting
 
 - **The WSL window opens, but `claude: command not found`.** Lodestone runs `bash -lic`, so anything your `~/.bashrc` or `~/.profile` adds to PATH is available. If claude lives somewhere else, set **Claude command (WSL)** to its full path.
-- **The session card says "not found".** Check that the session folder settings point to the right place. The WSL distro must be running for auto-detection to work. A session that was just started only gets a transcript after its first message.
+- **The session card says "not found".** Check that the session folder settings point to the right place. Auto-detection asks WSL and gives up after 15 seconds; if it fails, set **WSL sessions folder** by hand. Changing the WSL distro or a sessions-folder setting retries detection. A session that was just started only gets a transcript after its first message.
 - **Resume says the session doesn't exist.** Sessions belong to one install. A session created in WSL can't be resumed by Windows claude, and the reverse is also true. The card's badge shows which install owns it.
 
 - **A notice says it used a console window because a path contains `%`.** Windows Terminal expands `%NAME%` in the command it's given and can't escape it, so if your temp folder (usually under your Windows user name) contains `%`, Lodestone uses a console window for that launch instead.
@@ -131,4 +131,4 @@ npm run build   # typecheck + production bundle
 
 ### Knowledge base
 
-[`docs/kb/INDEX.md`](docs/kb/INDEX.md) collects what isn't obvious from the code: architecture, why launches are quoted the way they are, past decisions and gotchas. In Claude Code sessions in this repo, the `knowledge-base` skill (`.claude/skills/knowledge-base/`) loads automatically. It searches the knowledge base and suggests additions. Apart from that skill, `.claude/` is kept out of version control on purpose.
+[`docs/kb/INDEX.md`](docs/kb/INDEX.md) collects what isn't obvious from the code: architecture, why launches are quoted the way they are, past decisions and gotchas. In Claude Code sessions in this repo, the `knowledge-base` skill (`.claude/skills/knowledge-base/`) is available automatically. It searches the knowledge base and suggests additions. Apart from that skill, `.claude/` is kept out of version control on purpose.
