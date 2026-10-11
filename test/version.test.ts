@@ -104,8 +104,11 @@ test("version: PR check flags only version fields", () => {
 
 // The CLI, run in a throwaway git repo with a copy of the script.
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "check-version.mjs");
+// Without inherited GIT_* variables: git exports GIT_DIR to hooks, `!` aliases and
+// `rebase --exec` run in a linked worktree, which would point every git call here at the real
+// repository instead of the temp one.
 const gitEnv = {
-	...process.env,
+	...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
 	GIT_CONFIG_GLOBAL: os.devNull,
 	GIT_CONFIG_NOSYSTEM: "1",
 	GIT_AUTHOR_NAME: "test",
@@ -133,7 +136,7 @@ function repo(t: { after: (fn: () => void) => void }) {
 		return git("rev-parse", "HEAD");
 	};
 	const run = (...args: string[]) => {
-		const r = spawnSync("node", ["scripts/check-version.mjs", ...args], { cwd: dir, env: gitEnv, encoding: "utf8" });
+		const r = spawnSync(process.execPath, ["scripts/check-version.mjs", ...args], { cwd: dir, env: gitEnv, encoding: "utf8" });
 		return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() };
 	};
 	git("init", "-q", "-b", "main");
