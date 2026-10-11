@@ -15,7 +15,7 @@ Install and update steps for users are in the [README](../../README.md). This en
 | `npm test` | Runs `test/*.test.ts` with `node --experimental-strip-types --test`. |
 | `npm run build` | `tsc --noEmit` (typecheck), then an esbuild production bundle to `main.js`. |
 | `npm run dev` | esbuild in watch mode. After each successful rebuild it copies the plugin into the remembered vault. It also creates an empty `.hotreload` file in the plugin folder, which the **Hot Reload** community plugin needs before it reloads a folder that isn't a git checkout. With Hot Reload in that vault, Obsidian reloads Lodestone by itself. |
-| `npm run install-plugin [-- <vault>]` | Production build, then copies `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/lodestone/`. |
+| `npm run install-plugin [-- <vault>]` | Production build, then copies `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/<id>/`, where `<id>` is the `id` in `manifest.json` (currently `lodestone`). |
 
 ## Gotchas
 
