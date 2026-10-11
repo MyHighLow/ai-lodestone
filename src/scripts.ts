@@ -20,14 +20,25 @@ export interface LaunchSpec {
 export function newSessionArgs(opts: { sessionId?: string; prompt?: string; name?: string }): string[] {
 	const args = opts.sessionId ? ["--session-id", opts.sessionId] : [];
 	const name = opts.name ? sessionNameArg(opts.name) : "";
-	if (name) args.push("--name", name);
-	if (opts.prompt) args.push("--", opts.prompt);
+	// One token, so no shell can separate the option from its value.
+	if (name) args.push(`--name=${name}`);
+	// Last line of defense: whatever built the prompt (placeholders, templates), nothing
+	// invisible reaches claude.
+	const prompt = opts.prompt ? stripInvisible(opts.prompt).text : "";
+	if (prompt) args.push("--", prompt);
 	return args;
 }
 
-/** The name sits before `--`, so it gets no `"` (the splitting risk) and no trailing `\`. */
+/**
+ * The name sits before `--`, so it gets no `"` (the splitting risk), no trailing `\`, and no
+ * invisible or text-direction characters (they could spoof names in claude's /resume list).
+ */
 export function sessionNameArg(name: string): string {
-	return name.replace(/["\x00-\x1f\x7f]/g, "").trim().replace(/\\+$/, "").trim();
+	return stripInvisible(name)
+		.text.replace(/["\x00-\x1f\x7f-\x9f]/g, "")
+		.trim()
+		.replace(/\\+$/, "")
+		.trim();
 }
 
 export function resumeArgs(sessionId: string): string[] {
@@ -63,13 +74,11 @@ export function shQuote(s: string): string {
 export function escapeForLegacyNative(arg: string): string {
 	let out = arg.replace(/(\\*)"/g, (_m, bs: string) => bs + bs + '\\"');
 	// A trailing backslash would escape the closing quote PowerShell adds around args with spaces.
-	if (/\s/.test(out)) out = out.replace(/(\\+)$/, "$1$1");
+	// U+0085 too: .NET counts it as whitespace when deciding to add those quotes; JS \s doesn't.
+	if (/[\s\u0085]/.test(out)) out = out.replace(/(\\+)$/, "$1$1");
 	return out;
 }
 
-function psCommand(claudeCmd: string, args: string[]): string {
-	return ["&", psQuote(claudeCmd), ...args.map(psQuote)].join(" ");
-}
 
 
 function shCommand(claudeCmd: string, args: string[]): string {
@@ -103,6 +112,30 @@ export function windowsArg(arg: string): string {
 	return out + "\\".repeat(backslashes * 2) + '"';
 }
 
+/** Escapes PowerShell wildcard characters, so Get-Command -Name takes the name literally. */
+function psWildcardEscape(name: string): string {
+	return name.replace(/[*?[\]`]/g, "`$&");
+}
+
+/**
+ * PowerShell that sets $resolved to the claude to run, or $null. Only real programs
+ * (.exe, .com) and PowerShell scripts qualify: aliases and functions are skipped, and so are
+ * .cmd/.bat shims (cmd.exe would re-parse the prompt) and anything else Windows hands to
+ * another program (.vbs, .js, a trailing-dot name…). The caller then runs $resolved itself,
+ * never the name again, so what runs is what was checked.
+ */
+export function psResolveClaude(claudeCmd: string): string {
+	const name = psQuote(psWildcardEscape(claudeCmd));
+	return `$resolved = @(Get-Command -Name ${name} -CommandType Application,ExternalScript -All -ErrorAction SilentlyContinue) | Where-Object { $_.CommandType -eq 'ExternalScript' -or $_.Path -match '\\.(exe|com)$' } | Select-Object -First 1`;
+}
+
+function notFoundMessage(claudeCmd: string): string {
+	return `Lodestone found no claude.exe or claude.ps1 for "${claudeCmd}". Batch-file shims (.cmd, .bat) are refused because cmd.exe would re-parse the prompt. Set Lodestone's "Claude command (PowerShell)" to the full path of claude.exe.`;
+}
+
+const LEGACY_SCRIPT_MESSAGE =
+	"This PowerShell can't pass the prompt's double quotes (or a trailing backslash) through a claude.ps1 script intact, so Lodestone didn't start it. Use PowerShell 7.3 or later, or point Lodestone's \"Claude command (PowerShell)\" at claude.exe.";
+
 /**
  * A .ps1 file body. Runs under `-NoExit` so the window stays when claude exits.
  *
@@ -122,26 +155,33 @@ export function buildPowershellScript(spec: LaunchSpec, opts: ScriptOptions): st
 	const lines: string[] = [];
 	if (opts.selfPath) lines.push(`Remove-Item -LiteralPath ${psQuote(opts.selfPath)} -ErrorAction SilentlyContinue`);
 	lines.push(`Set-Location -LiteralPath ${psQuote(spec.cwd)}`);
-	lines.push(`$claude = ${psQuote(opts.claudeCmd)}`);
-	lines.push(String.raw`$resolved = Get-Command -Name $claude -ErrorAction SilentlyContinue | Select-Object -First 1`);
-	lines.push(String.raw`$native = $resolved -and $resolved.CommandType -eq 'Application'`);
-	lines.push(String.raw`if ($native -and $resolved.Path -match '\.(cmd|bat)$') {`);
-	lines.push(String.raw`  Write-Host "Lodestone won't run $($resolved.Path): batch files re-parse the prompt through cmd.exe. Point Lodestone's 'Claude command (PowerShell)' setting at claude.exe instead." -ForegroundColor Red`);
+	lines.push(psResolveClaude(opts.claudeCmd));
+	lines.push(`if (-not $resolved) {`);
+	lines.push(`  Write-Host ${psQuote(notFoundMessage(opts.claudeCmd))} -ForegroundColor Red`);
 	lines.push(`  return`);
 	lines.push(`}`);
+	lines.push(String.raw`$native = $resolved.CommandType -eq 'Application'`);
 	lines.push(String.raw`if ($native -and $PSVersionTable.PSEdition -ne 'Core') {`);
 	lines.push(`  $psi = New-Object System.Diagnostics.ProcessStartInfo`);
 	lines.push(String.raw`  $psi.FileName = $resolved.Path`);
 	lines.push(`  $psi.Arguments = ${psQuote(spec.args.map(windowsArg).join(" "))}`);
+	// Set-Location only moves PowerShell's own location, not the process's working directory.
+	lines.push(`  $psi.WorkingDirectory = ${psQuote(spec.cwd)}`);
 	lines.push(String.raw`  $psi.UseShellExecute = $false`);
 	lines.push(String.raw`  [System.Diagnostics.Process]::Start($psi).WaitForExit()`);
 	const legacyArgs = spec.args.map(escapeForLegacyNative);
 	if (legacyArgs.some((a, i) => a !== spec.args[i])) {
-		lines.push(String.raw`} elseif ($native -and ($PSVersionTable.PSVersion -lt [version]'7.3' -or $PSNativeCommandArgumentPassing -eq 'Legacy')) {`);
-		lines.push(`  & $claude ${legacyArgs.map(psQuote).join(" ")}`);
+		const legacy = String.raw`($PSVersionTable.PSVersion -lt [version]'7.3' -or $PSNativeCommandArgumentPassing -eq 'Legacy')`;
+		lines.push(`} elseif ($native -and ${legacy}) {`);
+		lines.push(`  & $resolved ${legacyArgs.map(psQuote).join(" ")}`);
+		// A .ps1 (like npm's claude.ps1) hands the arguments on to node.exe itself, with this
+		// PowerShell's quoting, and that can't be pre-escaped reliably on 5.1. Refuse rather
+		// than send a different prompt.
+		lines.push(`} elseif (${legacy}) {`);
+		lines.push(`  Write-Host ${psQuote(LEGACY_SCRIPT_MESSAGE)} -ForegroundColor Red`);
 	}
 	lines.push(`} else {`);
-	lines.push(`  & $claude ${spec.args.map(psQuote).join(" ")}`);
+	lines.push(`  & $resolved ${spec.args.map(psQuote).join(" ")}`);
 	lines.push(`}`);
 	return lines.join("\r\n") + "\r\n";
 }
@@ -160,7 +200,9 @@ export function buildBashScript(spec: LaunchSpec, opts: ScriptOptions): string {
 /** A one-liner to paste into your own terminal. */
 export function buildCopyCommand(spec: LaunchSpec, claudeCmd: string): string {
 	if (spec.env === "wsl") return `cd ${shQuote(spec.cwd)} && ${shCommand(claudeCmd, spec.args)}`;
-	return `cd ${psQuote(spec.cwd)}; ${psCommand(claudeCmd, spec.args)}`;
+	// Same lookup as the launch script, so a pasted command never reaches a batch shim.
+	const run = `& $resolved ${spec.args.map(psQuote).join(" ")}`;
+	return `cd ${psQuote(spec.cwd)}; ${psResolveClaude(claudeCmd)}; if ($resolved) { ${run} } else { Write-Error ${psQuote(notFoundMessage(claudeCmd))} }`;
 }
 
 /**

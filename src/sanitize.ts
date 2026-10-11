@@ -5,14 +5,16 @@
 /**
  * Candidates: everything Unicode marks Default_Ignorable_Code_Point (zero-width spaces and
  * joiners, bidi controls, variation selectors, tag characters, Hangul fillers, soft hyphen…),
- * plus the interlinear annotation controls U+FFF9–FFFB.
+ * plus the interlinear annotation controls U+FFF9–FFFB, plus C0/C1 control characters other
+ * than tab, line feed and carriage return. Those render as nothing, and a NUL would silently
+ * cut the prompt short on Windows, where a command line ends at the first NUL.
  *
  * Matched first, and kept whole: the three standard subdivision flags (England, Scotland,
  * Wales), whose tag characters spell gbeng/gbsct/gbwls. Any other tag sequence is stripped,
  * because tags after 🏴 can spell out arbitrary hidden ASCII.
  */
 const CANDIDATES =
-	/\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}|[\p{Default_Ignorable_Code_Point}\uFFF9-\uFFFB]/gu;
+	/\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}|[\p{Default_Ignorable_Code_Point}\uFFF9-\uFFFB\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/gu;
 
 /** What may sit on either side of a kept ZWJ/ZWNJ: letters, marks, emoji parts. */
 const JOINABLE = /[\p{L}\p{M}\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F]/u;

@@ -42,7 +42,9 @@ function findWindowsTerminalOnPath(): string | null {
 
 /**
  * Portable (zip) installs live anywhere, so look for a Start Menu or taskbar shortcut
- * that points at Windows Terminal.
+ * that points at Windows Terminal. Only those places: the Desktop and download folders are
+ * where extracted archives and cloned repos land, and a shortcut planted there would
+ * otherwise decide which program every launch runs.
  */
 function findWindowsTerminalFromShortcuts(): Promise<string | null> {
 	// String.raw keeps the backslashes exactly as PowerShell should see them.
@@ -50,8 +52,7 @@ function findWindowsTerminalFromShortcuts(): Promise<string | null> {
 $dirs = @(
   "$env:APPDATA\Microsoft\Windows\Start Menu",
   "$env:ProgramData\Microsoft\Windows\Start Menu",
-  "$env:APPDATA\Microsoft\Internet Explorer\Quick Launch",
-  "$env:USERPROFILE\Desktop"
+  "$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned"
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
 if (-not $dirs) { exit }
 $shell = New-Object -ComObject WScript.Shell
@@ -145,7 +146,8 @@ export async function launchInTerminal(
 
 function runCmd(commandLine: string, vars: Record<string, string>): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
-		const child = spawn("cmd.exe", ["/d", "/s", "/c", `"${commandLine}"`], {
+		// /v:off: even if the registry turns on delayed expansion, !VAR! in a value stays text.
+		const child = spawn("cmd.exe", ["/d", "/v:off", "/s", "/c", `"${commandLine}"`], {
 			env: { ...process.env, ...vars },
 			windowsVerbatimArguments: true,
 			windowsHide: true,

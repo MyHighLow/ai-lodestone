@@ -13,8 +13,7 @@ const PREVIEW_CHARS = 400;
 export function registerPromptBlock(plugin: LodestonePlugin) {
 	plugin.registerMarkdownCodeBlockProcessor(PROMPT_LANG, (source, el, ctx) => {
 		const parsed = parsePromptBody(source);
-		// Hidden characters are dropped from what's shown *and* what's sent, so the two match.
-		const { text: prompt, removed } = stripInvisible(parsed.prompt);
+		const prompt = parsed.prompt;
 		const runs = parsed.runs;
 		const fence = fenceTitle(el, ctx, PROMPT_LANG);
 		const title = fence ? stripInvisible(fence).text || null : null;
@@ -24,17 +23,21 @@ export function registerPromptBlock(plugin: LodestonePlugin) {
 		const { right } = cardHeader(card, LODESTONE_ICON, title ?? "Claude prompt");
 		right.createSpan({ cls: "lodestone-badge lodestone-badge-kind", text: "prompt" });
 
-		if (!prompt.trim()) {
+		if (!stripInvisible(prompt).text.trim()) {
 			card.createDiv({ cls: "lodestone-error", text: "Write the prompt for the new session inside this block." });
 			return;
 		}
 
-		// The preview is exactly what Run sends: placeholders filled in for the current default shell.
-		const sentPrompt = (env: Env) => plugin.expandTemplate(prompt, ctx.sourcePath, env);
+		// The preview is exactly what Run sends: placeholders filled in for the current default
+		// shell, then hidden characters dropped. Stripping after filling in placeholders matters:
+		// a file name can carry hidden characters too.
+		const sanitized = (env: Env) => stripInvisible(plugin.expandTemplate(prompt, ctx.sourcePath, env));
+		const sentPrompt = (env: Env) => sanitized(env).text;
 		const text = card.createDiv({ cls: "lodestone-prompt-text" });
 		const renderPreview = () => text.setText(sentPrompt(plugin.settings.defaultEnv));
 		renderPreview();
 
+		const removed = sanitized(plugin.settings.defaultEnv).removed;
 		if (removed) {
 			card.createDiv({
 				cls: "lodestone-warning",
