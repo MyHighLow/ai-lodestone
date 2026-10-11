@@ -36,7 +36,7 @@ The plugin used to be called Lodestone, with the id `lodestone`. It's now AI Lod
 4. Delete the old `lodestone` folder, so there aren't two copies.
 5. Open Obsidian and enable **AI Lodestone** under **Settings → Community plugins**.
 
-Notes and their `claude-session` and `claude-prompt` blocks don't change.
+Notes and their `claude-session` and `claude-prompt` blocks don't change. Hotkeys you set for its commands don't carry over, because Obsidian stores them by plugin id: set them again under **Settings → Hotkeys**.
 
 ### Updating while you develop
 

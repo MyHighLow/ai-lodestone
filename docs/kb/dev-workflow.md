@@ -20,10 +20,10 @@ Install and update steps for users are in the [README](../../README.md). This en
 ## Gotchas
 
 - **Tests need Node 22.6 or later** for `--experimental-strip-types`, even though building works on older Node. They also need `bash` on PATH, because some tests run the generated bash scripts. Run them in WSL or Linux.
-- **Only the pure modules are tested** (see [architecture.md](architecture.md)). Anything that imports `obsidian`, or launches processes, needs a manual check in a real vault on Windows. Launching throws on any platform other than Windows.
+- **Mostly the pure modules are tested** (see [architecture.md](architecture.md)). `test/launcher.test.ts` also loads `launcher.ts`, but only covers its non-Windows paths, where launching throws and detection returns `null` without spawning anything. Anything that imports `obsidian`, or actually launches processes, needs a manual check in a real vault on Windows.
 - **`.vault`** remembers the vault path from the last `install-plugin` and is gitignored. It can be a Windows path or a `/mnt/d/…` path; Windows paths are converted when running under WSL. The target must contain a `.obsidian` folder.
 - `main.js` is a build output and is gitignored.
-- The `obsidian` API package is `latest` in `package.json`, so only `package-lock.json` pins its version. Expect type changes when the lockfile is refreshed.
+- The `obsidian` API package is pinned to an exact version in `package.json` (since #5). Bump it on purpose. When you do, check that nothing new is used above `minAppVersion` in `manifest.json`: `eslint-plugin-obsidianmd`'s `no-unsupported-api` rule reports that, and it's how a `getFileByPath` call that needed 1.5.7 was found.
 
 ## Knowledge base
 
