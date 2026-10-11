@@ -1,5 +1,5 @@
 {
-  "name": "lodestone",
+  "name": "ai-lodestone",
   "version": "0.1.0",
   "description": "Launch, record and resume Claude Code sessions from Obsidian.",
   "main": "main.js",
@@ -16,7 +16,7 @@
     "@types/node": "^22.0.0",
     "builtin-modules": "^4.0.0",
     "esbuild": "^0.25.0",
-    "obsidian": "latest",
+    "obsidian": "1.14.4",
     "tslib": "^2.6.0",
     "typescript": "^5.6.0"
   }

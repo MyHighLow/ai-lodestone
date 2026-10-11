@@ -130,11 +130,11 @@ export function psResolveClaude(claudeCmd: string): string {
 }
 
 function notFoundMessage(claudeCmd: string): string {
-	return `Lodestone found no claude.exe or claude.ps1 for "${claudeCmd}". Batch-file shims (.cmd, .bat) are refused because cmd.exe would re-parse the prompt. Set Lodestone's "Claude command (PowerShell)" to the full path of claude.exe.`;
+	return `AI Lodestone found no claude.exe or claude.ps1 for "${claudeCmd}". Batch-file shims (.cmd, .bat) are refused because cmd.exe would re-parse the prompt. Set AI Lodestone's "Claude command (PowerShell)" to the full path of claude.exe.`;
 }
 
 const LEGACY_SCRIPT_MESSAGE =
-	"This PowerShell can't pass the prompt's double quotes (or a trailing backslash) through a claude.ps1 script intact, so Lodestone didn't start it. Use PowerShell 7.3 or later, or point Lodestone's \"Claude command (PowerShell)\" at claude.exe.";
+	"This PowerShell can't pass the prompt's double quotes (or a trailing backslash) through a claude.ps1 script intact, so AI Lodestone didn't start it. Use PowerShell 7.3 or later, or point AI Lodestone's \"Claude command (PowerShell)\" at claude.exe.";
 
 /**
  * A .ps1 file body. Runs under `-NoExit` so the window stays when claude exits.
@@ -190,7 +190,7 @@ export function buildPowershellScript(spec: LaunchSpec, opts: ScriptOptions): st
 export function buildBashScript(spec: LaunchSpec, opts: ScriptOptions): string {
 	const lines: string[] = [];
 	if (opts.selfPath) lines.push(`rm -f -- ${shQuote(opts.selfPath)}`);
-	lines.push(`cd -- ${shQuote(spec.cwd)} || printf 'lodestone: could not cd to %s\\n' ${shQuote(spec.cwd)}`);
+	lines.push(`cd -- ${shQuote(spec.cwd)} || printf 'ai-lodestone: could not cd to %s\\n' ${shQuote(spec.cwd)}`);
 	lines.push(shCommand(opts.claudeCmd, spec.args));
 	// Leave a shell open in the session's directory after claude exits.
 	lines.push("exec bash -l");

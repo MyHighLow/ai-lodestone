@@ -1,4 +1,4 @@
-import { MarkdownRenderChild, Menu, Notice, type MarkdownPostProcessorContext } from "obsidian";
+import { MarkdownRenderChild, Menu, Notice, TFile, type MarkdownPostProcessorContext } from "obsidian";
 import { LODESTONE_ICON } from "../icon";
 import type LodestonePlugin from "../main";
 import { appendRunToBlock, formatRunTime, formatSessionBlock, parsePromptBody, PROMPT_LANG, type PromptRun } from "../parse";
@@ -195,7 +195,9 @@ async function editBlock(
 	ctx: MarkdownPostProcessorContext,
 	edit: (lines: string[], lineStart: number, lineEnd: number) => string[],
 ): Promise<boolean> {
-	const file = plugin.app.vault.getFileByPath(ctx.sourcePath);
+	// Not getFileByPath: that needs Obsidian 1.5.7, and minAppVersion is 1.5.0.
+	const found = plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
+	const file = found instanceof TFile ? found : null;
 	const section = ctx.getSectionInfo(el);
 	if (!file || !section) return false;
 	let ok = false;
@@ -213,7 +215,7 @@ async function editBlock(
 
 async function recordRun(plugin: LodestonePlugin, el: HTMLElement, ctx: MarkdownPostProcessorContext, run: PromptRun) {
 	const ok = await editBlock(plugin, el, ctx, (lines, start, end) => appendRunToBlock(lines, start, end, run));
-	if (!ok) new Notice("Lodestone: couldn't add the run to this block (it moved?). It's still in Browse recent sessions.");
+	if (!ok) new Notice("AI Lodestone: couldn't add the run to this block (it moved?). It's still in Browse recent sessions.");
 }
 
 async function insertSessionBlockBelow(
@@ -225,5 +227,5 @@ async function insertSessionBlockBelow(
 ) {
 	const block = formatSessionBlock({ sessionId: run.sessionId, title: `${blockTitle ?? "Prompt run"} (${run.time})` });
 	const ok = await editBlock(plugin, el, ctx, (lines, _start, end) => [...lines.slice(0, end + 1), "", ...block.split("\n"), ...lines.slice(end + 1)]);
-	if (!ok) new Notice("Lodestone: couldn't find this block in the note to insert below it.");
+	if (!ok) new Notice("AI Lodestone: couldn't find this block in the note to insert below it.");
 }

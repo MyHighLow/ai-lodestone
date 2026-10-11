@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const version = process.env.npm_package_version;
 if (!version) {
-	console.error("[lodestone] run this through `npm version`, not directly");
+	console.error("[ai-lodestone] run this through `npm version`, not directly");
 	process.exit(1);
 }
 
@@ -24,4 +24,4 @@ const versions = readJson("versions.json");
 versions[version] = manifest.minAppVersion;
 writeJson("versions.json", versions);
 
-console.log(`[lodestone] manifest.json and versions.json set to ${version}`);
+console.log(`[ai-lodestone] manifest.json and versions.json set to ${version}`);

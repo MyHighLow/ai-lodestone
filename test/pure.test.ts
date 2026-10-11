@@ -102,7 +102,7 @@ test("powershell script: quoting chosen at run time, batch shims refused", () =>
 	);
 	assert.match(script, /Set-Location -LiteralPath 'D:\\Vault\\Notes'/);
 	// Resolve once (allowlist: .exe/.com programs and .ps1 scripts), refuse if nothing qualifies.
-	assert.ok(script.includes(psResolveClaude("claude") + "\r\nif (-not $resolved) {\r\n  Write-Host 'Lodestone found no claude.exe"));
+	assert.ok(script.includes(psResolveClaude("claude") + "\r\nif (-not $resolved) {\r\n  Write-Host 'AI Lodestone found no claude.exe"));
 	assert.match(script, /-ForegroundColor Red\r\n  return\r\n\}/);
 	// Windows PowerShell 5.1 + claude.exe: a command line built by windowsArg, in the note's folder.
 	assert.ok(script.includes(String.raw`  $psi.Arguments = '--session-id ${ID} -- "a \"b\""'`));
@@ -154,7 +154,7 @@ test("invisible characters are stripped from the final prompt, whatever built it
 test("copy commands", () => {
 	assert.equal(
 		buildCopyCommand({ env: "powershell", cwd: "D:\\V", args: ["--resume", ID] }, "claude"),
-		`cd 'D:\\V'; ${psResolveClaude("claude")}; if ($resolved) { & $resolved '--resume' '${ID}' } else { Write-Error 'Lodestone found no claude.exe or claude.ps1 for "claude". Batch-file shims (.cmd, .bat) are refused because cmd.exe would re-parse the prompt. Set Lodestone''s "Claude command (PowerShell)" to the full path of claude.exe.' }`,
+		`cd 'D:\\V'; ${psResolveClaude("claude")}; if ($resolved) { & $resolved '--resume' '${ID}' } else { Write-Error 'AI Lodestone found no claude.exe or claude.ps1 for "claude". Batch-file shims (.cmd, .bat) are refused because cmd.exe would re-parse the prompt. Set AI Lodestone''s "Claude command (PowerShell)" to the full path of claude.exe.' }`,
 	);
 	// The lookup takes the configured name literally and only accepts .exe/.com or a script.
 	assert.ok(psResolveClaude("C:\\Tools[1]\\claude*").includes(String.raw`-Name 'C:\Tools` + "`[1`]" + String.raw`\claude` + "`*'"));
@@ -312,7 +312,7 @@ test("session block parsing is linear (no ReDoS)", () => {
 test("bash cd-failure message can't run anything", () => {
 	const script = buildBashScript({ env: "wsl", cwd: "/nonexistent/$(echo PWNED)/`echo PWNED2`/!!", args: [] }, { claudeCmd: "true" });
 	const out = execFileSync("bash", ["-c", script.replace("exec bash -l", "")]).toString();
-	assert.equal(out, "lodestone: could not cd to /nonexistent/$(echo PWNED)/`echo PWNED2`/!!\n");
+	assert.equal(out, "ai-lodestone: could not cd to /nonexistent/$(echo PWNED)/`echo PWNED2`/!!\n");
 });
 
 test("inserted session blocks stay inside their fence", () => {
