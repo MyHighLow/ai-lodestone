@@ -128,3 +128,7 @@ npm run build   # typecheck + production bundle
 | `src/launcher.ts` | Writes a temporary script that deletes itself, then opens it with `cmd /c start`. |
 | `src/sessions.ts`, `src/transcript.ts` | Find and summarize session transcripts. |
 | `src/blocks/` | The two code-block renderers. |
+
+### Knowledge base
+
+[`docs/kb/INDEX.md`](docs/kb/INDEX.md) collects what isn't obvious from the code: architecture, why launches are quoted the way they are, past decisions and gotchas. In Claude Code sessions in this repo, the `knowledge-base` skill (`.claude/skills/knowledge-base/`) loads automatically. It searches the knowledge base and suggests additions. Apart from that skill, `.claude/` is kept out of version control on purpose.
