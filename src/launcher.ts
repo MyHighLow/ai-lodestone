@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { buildBashScript, buildPowershellScript, buildStartCommand, windowsToWsl, type LaunchSpec, type TerminalApp } from "./scripts";
+import { buildBashScript, buildLaunchCommand, buildPowershellScript, windowsToWsl, type LaunchSpec, type LaunchTarget, type TerminalApp } from "./scripts";
 import type { LodestoneSettings } from "./types";
 
 const PWSH7 = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
@@ -89,50 +89,64 @@ export function findWindowsTerminal(configuredPath: string): Promise<string | nu
 	return detectedWindowsTerminal;
 }
 
-function isLegacyPowershell(exe: string): boolean {
-	return /(^|[\\/])powershell(\.exe)?$/i.test(exe);
-}
-
-function wslDistroArgs(settings: LodestoneSettings): string {
-	const d = settings.wslDistro.trim();
-	return d ? `-d "${d.replace(/"/g, "")}" ` : "";
+/** `wx`: fail rather than write through anything already at this (random) path. */
+async function writeNewFile(file: string, content: string) {
+	await fs.promises.writeFile(file, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
 }
 
 /**
  * Opens a new terminal window (or Windows Terminal tab) running claude. The launch script is written to a temp
  * file (which deletes itself) so prompts never pass through cmd/PowerShell/wsl quoting.
  */
-export async function launchInTerminal(spec: LaunchSpec, title: string, settings: LodestoneSettings): Promise<{ terminal: TerminalApp }> {
+export async function launchInTerminal(
+	spec: LaunchSpec,
+	title: string,
+	settings: LodestoneSettings,
+): Promise<{ terminal: TerminalApp; fallbackReason?: string }> {
 	if (process.platform !== "win32") throw new Error("Lodestone currently launches terminals on Windows only.");
 
 	const base = path.join(os.tmpdir(), `lodestone-${crypto.randomBytes(6).toString("hex")}`);
-	let program: string;
+	const file = base + (spec.env === "powershell" ? ".ps1" : ".sh");
+	let target: LaunchTarget;
 
 	if (spec.env === "powershell") {
 		const exe = resolvePowershellExe(settings.powershellExe);
-		const file = base + ".ps1";
 		const body = buildPowershellScript(spec, {
 			claudeCmd: settings.claudeCommandPowershell,
 			selfPath: file,
-			legacyPowershell: isLegacyPowershell(exe),
 		});
 		// BOM so Windows PowerShell 5.1 reads the file as UTF-8.
-		await fs.promises.writeFile(file, "\ufeff" + body, "utf8");
-		program = `"${exe}" -NoLogo -NoExit -ExecutionPolicy Bypass -File "${file}"`;
+		await writeNewFile(file, "\ufeff" + body);
+		target = { env: "powershell", exe, scriptPath: file };
 	} else {
-		const file = base + ".sh";
 		const wslFile = windowsToWsl(file, settings.wslMountRoot);
-		const body = buildBashScript(spec, { claudeCmd: settings.claudeCommandWsl, selfPath: wslFile });
-		await fs.promises.writeFile(file, body, "utf8");
-		program = `wsl.exe ${wslDistroArgs(settings)}--cd ~ --exec bash -lic "source '${wslFile}'"`;
+		await writeNewFile(file, buildBashScript(spec, { claudeCmd: settings.claudeCommandWsl, selfPath: wslFile }));
+		target = { env: "wsl", distro: settings.wslDistro.trim() || undefined, scriptPath: wslFile };
 	}
 
 	const wtExe = settings.terminalApp === "windows-terminal" ? await findWindowsTerminal(settings.windowsTerminalPath) : null;
-	const terminal: TerminalApp = wtExe ? "windows-terminal" : "console";
-	const commandLine = buildStartCommand({ title, program, terminal, wtExe: wtExe ?? undefined, wtNewWindow: settings.wtNewWindow });
 
-	await new Promise<void>((resolve, reject) => {
+	try {
+		const launch = buildLaunchCommand({
+			target,
+			title,
+			terminal: wtExe ? "windows-terminal" : "console",
+			wtExe: wtExe ?? undefined,
+			wtNewWindow: settings.wtNewWindow,
+		});
+		await runCmd(launch.commandLine, launch.vars);
+		return { terminal: launch.terminal, fallbackReason: launch.fallbackReason };
+	} catch (e) {
+		// The script only deletes itself if it ran.
+		await fs.promises.rm(file, { force: true }).catch(() => {});
+		throw e;
+	}
+}
+
+function runCmd(commandLine: string, vars: Record<string, string>): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
 		const child = spawn("cmd.exe", ["/d", "/s", "/c", `"${commandLine}"`], {
+			env: { ...process.env, ...vars },
 			windowsVerbatimArguments: true,
 			windowsHide: true,
 			stdio: "ignore",
@@ -140,7 +154,6 @@ export async function launchInTerminal(spec: LaunchSpec, title: string, settings
 		child.on("error", reject);
 		child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`cmd exited with code ${code}`))));
 	});
-	return { terminal };
 }
 
 /** Asks WSL where its ~/.claude/projects lives, as a Windows UNC path. */

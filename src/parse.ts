@@ -16,8 +16,13 @@ export interface SessionBlock {
 export function parseSessionBody(source: string): SessionBlock {
 	const fields: Record<string, string> = {};
 	for (const line of source.split(/\r?\n/)) {
-		const m = /^\s*([^:]+?)\s*:\s*(.*?)\s*$/.exec(line);
-		if (m && m[2]) fields[m[1].toLowerCase()] = m[2];
+		// indexOf + trim rather than a regex: overlapping \s* groups made a long line of
+		// spaces take cubic time, which froze Obsidian on render.
+		const colon = line.indexOf(":");
+		if (colon === -1) continue;
+		const key = line.slice(0, colon).trim();
+		const value = line.slice(colon + 1).trim();
+		if (key && value) fields[key.toLowerCase()] = value;
 	}
 	const idField = fields["session id"] ?? fields["session"] ?? fields["id"];
 	const sessionId = (idField && UUID_RE.exec(idField)?.[0]) ?? UUID_RE.exec(source)?.[0] ?? null;
@@ -39,7 +44,8 @@ export interface PromptBlock {
 	runs: PromptRun[];
 }
 
-const RUN_RE = /^\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\s*\|\s*(powershell|wsl)\s*\|\s*([0-9a-f-]{36})\s*$/i;
+const RUN_RE =
+	/^\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\s*\|\s*(powershell|wsl)\s*\|\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$/i;
 
 export function parseRunLine(line: string): PromptRun | null {
 	const m = RUN_RE.exec(line);
@@ -93,10 +99,17 @@ export function appendRunToBlock(lines: string[], lineStart: number, lineEnd: nu
 	return [...lines.slice(0, end), ...insert, ...lines.slice(lineEnd)];
 }
 
+/** Keeps text on one line and out of the fence syntax (a backtick would end the info string). */
+function fenceSafe(text: string): string {
+	return text.replace(/[`\r\n]+/g, " ").trim();
+}
+
 export function formatSessionBlock(opts: { sessionId: string; name?: string; title?: string }): string {
-	const head = "```" + SESSION_LANG + (opts.title ? " " + opts.title : "");
+	const title = opts.title ? fenceSafe(opts.title) : "";
+	const head = "```" + SESSION_LANG + (title ? " " + title : "");
 	const lines = [head];
-	if (opts.name) lines.push(`Session name:      ${opts.name}`);
+	const name = opts.name ? fenceSafe(opts.name) : "";
+	if (name) lines.push(`Session name:      ${name}`);
 	lines.push(`Session ID:        ${opts.sessionId}`);
 	lines.push("```");
 	return lines.join("\n");

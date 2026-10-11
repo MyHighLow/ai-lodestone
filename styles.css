@@ -232,3 +232,13 @@ body {
 	background: rgba(var(--lodestone-orange-rgb), 0.15);
 	color: var(--lodestone-orange);
 }
+
+.lodestone-warning {
+	color: var(--text-warning);
+	font-size: var(--font-ui-smaller);
+}
+
+/* Run / Copy on a long prompt that hasn't been expanded yet: clicking expands it instead. */
+.lodestone-card .lodestone-btn.is-unreviewed {
+	opacity: 0.6;
+}

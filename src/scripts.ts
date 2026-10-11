@@ -1,5 +1,7 @@
 // Pure functions that turn a launch request into shell scripts and copyable commands.
 // Kept free of Obsidian and Node imports so they can be unit tested directly.
+// Explicit extension: the unit tests load this module straight into node.
+import { stripInvisible } from "./sanitize.ts";
 import type { Env } from "./types";
 
 export interface LaunchSpec {
@@ -10,15 +12,22 @@ export interface LaunchSpec {
 	args: string[];
 }
 
-/** Args for a new session. Without a session ID, claude picks one (used for copied commands). */
+/**
+ * Args for a new session. Without a session ID, claude picks one (used for copied commands).
+ * The prompt always comes after `--`: if a shell ever splits it (old PowerShell quoting can,
+ * on a `"`), the pieces are still positional text and can never become claude options.
+ */
 export function newSessionArgs(opts: { sessionId?: string; prompt?: string; name?: string }): string[] {
 	const args = opts.sessionId ? ["--session-id", opts.sessionId] : [];
-	if (opts.name) args.push("--name", opts.name);
-	if (opts.prompt) {
-		if (opts.prompt.startsWith("-")) args.push("--");
-		args.push(opts.prompt);
-	}
+	const name = opts.name ? sessionNameArg(opts.name) : "";
+	if (name) args.push("--name", name);
+	if (opts.prompt) args.push("--", opts.prompt);
 	return args;
+}
+
+/** The name sits before `--`, so it gets no `"` (the splitting risk) and no trailing `\`. */
+export function sessionNameArg(name: string): string {
+	return name.replace(/["\x00-\x1f\x7f]/g, "").trim().replace(/\\+$/, "").trim();
 }
 
 export function resumeArgs(sessionId: string): string[] {
@@ -47,8 +56,9 @@ export function shQuote(s: string): string {
 }
 
 /**
- * Windows PowerShell 5.1 doesn't escape embedded double quotes when it builds a native
- * command line, so they'd be eaten. Pre-escape them the way the MSVC runtime parses them.
+ * PowerShell before 7.3 (and Legacy mode) doesn't escape embedded double quotes when it
+ * builds a native command line, so they'd be eaten. Pre-escape them the way the MSVC
+ * runtime parses them.
  */
 export function escapeForLegacyNative(arg: string): string {
 	let out = arg.replace(/(\\*)"/g, (_m, bs: string) => bs + bs + '\\"');
@@ -57,10 +67,10 @@ export function escapeForLegacyNative(arg: string): string {
 	return out;
 }
 
-function psCommand(claudeCmd: string, args: string[], legacy: boolean): string {
-	const quoted = args.map((a) => psQuote(legacy ? escapeForLegacyNative(a) : a));
-	return ["&", psQuote(claudeCmd), ...quoted].join(" ");
+function psCommand(claudeCmd: string, args: string[]): string {
+	return ["&", psQuote(claudeCmd), ...args.map(psQuote)].join(" ");
 }
+
 
 function shCommand(claudeCmd: string, args: string[]): string {
 	// The command isn't quoted so users can set things like `npx claude` or an alias.
@@ -71,16 +81,68 @@ export interface ScriptOptions {
 	claudeCmd: string;
 	/** Path of the script itself, so it can delete itself once it has started. */
 	selfPath?: string;
-	/** True for Windows PowerShell 5.1 (powershell.exe). */
-	legacyPowershell?: boolean;
 }
 
-/** A .ps1 file body. Runs under `-NoExit` so the window stays when claude exits. */
+/**
+ * Quotes one argument the way Windows programs (the MSVC runtime, CommandLineToArgvW) split
+ * a command line: wrap in quotes, escape `"`, and double the backslashes that precede a `"`
+ * or the closing quote.
+ */
+export function windowsArg(arg: string): string {
+	if (arg && !/[\s"]/.test(arg)) return arg;
+	let out = '"';
+	let backslashes = 0;
+	for (const ch of arg) {
+		if (ch === "\\") {
+			backslashes++;
+			continue;
+		}
+		out += "\\".repeat(ch === '"' ? backslashes * 2 + 1 : backslashes) + ch;
+		backslashes = 0;
+	}
+	return out + "\\".repeat(backslashes * 2) + '"';
+}
+
+/**
+ * A .ps1 file body. Runs under `-NoExit` so the window stays when claude exits.
+ *
+ * What it does depends on the PowerShell that runs it and on what `claude` resolves to:
+ * - A .cmd/.bat shim is refused: PowerShell runs those through cmd.exe, which would
+ *   re-parse the prompt (%VARS%, `&`, `|`), so a note's text could run as commands.
+ * - A PowerShell script (npm's claude.ps1) gets the arguments as they are: PowerShell
+ *   passes them to scripts without any command-line quoting.
+ * - A native claude.exe:
+ *   - Windows PowerShell 5.1 mishandles `"` inside arguments in a way no pre-escaping fixes,
+ *     so the script starts claude.exe itself with a command line built by windowsArg.
+ *   - PowerShell 6–7.2, or 7.3+ in Legacy mode, doesn't escape `"` but quotes correctly
+ *     otherwise, so it gets pre-escaped arguments.
+ *   - PowerShell 7.3+ passes arguments correctly as they are.
+ */
 export function buildPowershellScript(spec: LaunchSpec, opts: ScriptOptions): string {
 	const lines: string[] = [];
 	if (opts.selfPath) lines.push(`Remove-Item -LiteralPath ${psQuote(opts.selfPath)} -ErrorAction SilentlyContinue`);
 	lines.push(`Set-Location -LiteralPath ${psQuote(spec.cwd)}`);
-	lines.push(psCommand(opts.claudeCmd, spec.args, !!opts.legacyPowershell));
+	lines.push(`$claude = ${psQuote(opts.claudeCmd)}`);
+	lines.push(String.raw`$resolved = Get-Command -Name $claude -ErrorAction SilentlyContinue | Select-Object -First 1`);
+	lines.push(String.raw`$native = $resolved -and $resolved.CommandType -eq 'Application'`);
+	lines.push(String.raw`if ($native -and $resolved.Path -match '\.(cmd|bat)$') {`);
+	lines.push(String.raw`  Write-Host "Lodestone won't run $($resolved.Path): batch files re-parse the prompt through cmd.exe. Point Lodestone's 'Claude command (PowerShell)' setting at claude.exe instead." -ForegroundColor Red`);
+	lines.push(`  return`);
+	lines.push(`}`);
+	lines.push(String.raw`if ($native -and $PSVersionTable.PSEdition -ne 'Core') {`);
+	lines.push(`  $psi = New-Object System.Diagnostics.ProcessStartInfo`);
+	lines.push(String.raw`  $psi.FileName = $resolved.Path`);
+	lines.push(`  $psi.Arguments = ${psQuote(spec.args.map(windowsArg).join(" "))}`);
+	lines.push(String.raw`  $psi.UseShellExecute = $false`);
+	lines.push(String.raw`  [System.Diagnostics.Process]::Start($psi).WaitForExit()`);
+	const legacyArgs = spec.args.map(escapeForLegacyNative);
+	if (legacyArgs.some((a, i) => a !== spec.args[i])) {
+		lines.push(String.raw`} elseif ($native -and ($PSVersionTable.PSVersion -lt [version]'7.3' -or $PSNativeCommandArgumentPassing -eq 'Legacy')) {`);
+		lines.push(`  & $claude ${legacyArgs.map(psQuote).join(" ")}`);
+	}
+	lines.push(`} else {`);
+	lines.push(`  & $claude ${spec.args.map(psQuote).join(" ")}`);
+	lines.push(`}`);
 	return lines.join("\r\n") + "\r\n";
 }
 
@@ -88,7 +150,7 @@ export function buildPowershellScript(spec: LaunchSpec, opts: ScriptOptions): st
 export function buildBashScript(spec: LaunchSpec, opts: ScriptOptions): string {
 	const lines: string[] = [];
 	if (opts.selfPath) lines.push(`rm -f -- ${shQuote(opts.selfPath)}`);
-	lines.push(`cd -- ${shQuote(spec.cwd)} || echo "lodestone: couldn't cd to ${spec.cwd.replace(/["$`\\]/g, "\\$&")}"`);
+	lines.push(`cd -- ${shQuote(spec.cwd)} || printf 'lodestone: could not cd to %s\\n' ${shQuote(spec.cwd)}`);
 	lines.push(shCommand(opts.claudeCmd, spec.args));
 	// Leave a shell open in the session's directory after claude exits.
 	lines.push("exec bash -l");
@@ -98,35 +160,84 @@ export function buildBashScript(spec: LaunchSpec, opts: ScriptOptions): string {
 /** A one-liner to paste into your own terminal. */
 export function buildCopyCommand(spec: LaunchSpec, claudeCmd: string): string {
 	if (spec.env === "wsl") return `cd ${shQuote(spec.cwd)} && ${shCommand(claudeCmd, spec.args)}`;
-	return `cd ${psQuote(spec.cwd)}; ${psCommand(claudeCmd, spec.args, false)}`;
+	return `cd ${psQuote(spec.cwd)}; ${psCommand(claudeCmd, spec.args)}`;
 }
 
-/** Text for a window title: cmd treats `"` and `%` specially even inside quotes, wt splits on `;`. */
+/**
+ * A window title that can't break out of its quotes or be rewritten: no `"`, no `;` (wt
+ * subcommands), no `%` (Windows Terminal expands %VARS%), no control or invisible characters.
+ */
 export function consoleTitle(title: string): string {
-	return title.replace(/["%^;\r\n]/g, "").slice(0, 80) || "Claude";
+	const visible = stripInvisible(title).text;
+	return visible.replace(/["%;\x00-\x1f\x7f]/g, "").trim().slice(0, 80) || "Claude";
 }
 
 export type TerminalApp = "console" | "windows-terminal";
 
-export interface StartOptions {
+export type LaunchTarget =
+	| { env: "powershell"; exe: string; scriptPath: string }
+	/** `scriptPath` is the script's path inside WSL. */
+	| { env: "wsl"; distro?: string; scriptPath: string };
+
+export interface LaunchCommandOptions {
+	target: LaunchTarget;
 	title: string;
-	/** The program and its arguments, already quoted for a Windows command line. */
-	program: string;
 	terminal: TerminalApp;
-	/** Path to wt.exe; required for "windows-terminal". */
+	/** Path to wt.exe; used when `terminal` is "windows-terminal". */
 	wtExe?: string;
 	/** Windows Terminal: true opens a new window, false a new tab in the last-used window. */
 	wtNewWindow?: boolean;
 }
 
-/** The line run by `cmd /c` that opens the terminal. */
-export function buildStartCommand(opts: StartOptions): string {
-	const title = consoleTitle(opts.title);
-	if (opts.terminal === "windows-terminal" && opts.wtExe) {
-		// wt treats a bare `;` as a separator between its own subcommands.
-		const program = opts.program.replace(/;/g, "\\;");
-		const window = opts.wtNewWindow ? "new" : "0";
-		return `start "" "${opts.wtExe}" -w ${window} new-tab --title "${title}" ${program}`;
+export interface LaunchCommand {
+	/** For `cmd /d /s /c "<commandLine>"`. Holds only fixed text and %LODESTONE_*% references. */
+	commandLine: string;
+	/** Environment variables the command line refers to. */
+	vars: Record<string, string>;
+	/** The terminal actually used. */
+	terminal: TerminalApp;
+	/** Why Windows Terminal was requested but not used, when it was available. */
+	fallbackReason?: string;
+}
+
+/**
+ * Builds the `cmd /c` line that opens the terminal. Every variable part (paths, distro,
+ * title) goes in through an environment variable rather than being pasted into the line:
+ * cmd expands %VAR% once, before parsing, and never re-expands the result. So a `%`, `&`,
+ * `^` or `'` in a value (say, from the Windows user name inside the temp path) is just text.
+ * Each reference sits inside double quotes, so values only need to be free of `"`.
+ *
+ * Windows Terminal is different: it expands %VARS% in the command line it's given, again,
+ * and has no way to escape `%`. So if a value wt would read contains `%`, the launch uses a
+ * console window instead.
+ */
+export function buildLaunchCommand(opts: LaunchCommandOptions): LaunchCommand {
+	const t = opts.target;
+	const wtParsedValues = t.env === "powershell" ? [t.exe, t.scriptPath] : [t.distro ?? "", t.scriptPath];
+	let wt = opts.terminal === "windows-terminal" && !!opts.wtExe;
+	let fallbackReason: string | undefined;
+	if (wt && wtParsedValues.some((v) => v.includes("%"))) {
+		wt = false;
+		fallbackReason = "a path contains %, which Windows Terminal would rewrite";
 	}
-	return `start "${title}" ${opts.program}`;
+	const vars: Record<string, string> = {};
+	const ref = (name: string, value: string, label: string, wtParses = true): string => {
+		if (/["\x00-\x1f]/.test(value)) throw new Error(`${label} can't contain quotes or control characters: ${value}`);
+		// wt splits its own command line on `;`; `\;` is a literal semicolon.
+		vars[`LODESTONE_${name}`] = wt && wtParses ? value.replace(/;/g, "\\;") : value;
+		return `%LODESTONE_${name}%`;
+	};
+
+	const program =
+		t.env === "powershell"
+			? `"${ref("EXE", t.exe, "PowerShell path")}" -NoLogo -NoExit -ExecutionPolicy Bypass -File "${ref("SCRIPT", t.scriptPath, "Temp path")}"`
+			: `wsl.exe ${t.distro ? `-d "${ref("DISTRO", t.distro, "WSL distro")}" ` : ""}--cd ~ --exec bash -lic "source ${ref("SCRIPT", shQuote(t.scriptPath), "Temp path")}"`;
+	const title = ref("TITLE", consoleTitle(opts.title), "Title", false);
+
+	if (wt) {
+		const window = opts.wtNewWindow ? "new" : "0";
+		const commandLine = `start "" "${ref("WT", opts.wtExe!, "Windows Terminal path", false)}" -w ${window} new-tab --title "${title}" ${program}`;
+		return { commandLine, vars, terminal: "windows-terminal" };
+	}
+	return { commandLine: `start "${title}" ${program}`, vars, terminal: "console", fallbackReason };
 }

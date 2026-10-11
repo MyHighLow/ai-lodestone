@@ -69,6 +69,7 @@ Summarize {{file}} and list the action items.
 
 - **Run** starts a new session in the note's folder with this prompt, in your default shell. The session is named after the block title. Right-click to change the default.
 - **Copy command** copies the equivalent `claude` command for your default shell.
+- **What you see is what gets sent.** The card shows the prompt with placeholders already filled in. Invisible and text-direction characters, which could make a prompt read differently from what's sent, are removed from both the preview and the prompt, and the card says how many it dropped. A long prompt starts collapsed: clicking Run or Copy command expands it for review first, and the next click runs it.
 - **Placeholders**: `{{file}}`, `{{path}}` and `{{vaultPath}}` are filled in with the note's file name, full path, and path inside the vault.
 - **Run history**: each Run adds a line below a `---` inside the block, and the block itself never changes into anything else. The history shows up as **Previous runs**, where each run has a Resume and a Copy button:
 
@@ -100,7 +101,7 @@ The command **Browse recent sessions** lists every session Lodestone has started
 | New-session prompt | "Read the note … then wait" | The prompt the header button sends. |
 | Name sessions | on | Passes the title to `claude --name`. |
 | PowerShell executable | auto | Uses pwsh 7 if it's installed, otherwise `powershell.exe`. |
-| Claude command (PowerShell / WSL) | `claude` | Use a full path if `claude` isn't on PATH. |
+| Claude command (PowerShell / WSL) | `claude` | Use a full path if `claude` isn't on PATH. On Windows, a `claude` that resolves to a `.cmd`/`.bat` file is refused, because cmd.exe would re-parse the prompt; use `claude.exe` (the native installer) or npm's `claude.ps1`. |
 | WSL distro | (your default) | Same as `wsl -d <name>`. |
 | WSL sessions folder | auto-detected | Found by running `wslpath -w ~/.claude/projects`. |
 | Windows drive mount root | `/mnt` | Used to convert `D:\x` into `/mnt/d/x`. |
@@ -111,6 +112,7 @@ The command **Browse recent sessions** lists every session Lodestone has started
 - **The session card says "not found".** Check that the session folder settings point to the right place. The WSL distro must be running for auto-detection to work. A session that was just started only gets a transcript after its first message.
 - **Resume says the session doesn't exist.** Sessions belong to one install. A session created in WSL can't be resumed by Windows claude, and the reverse is also true. The card's badge shows which install owns it.
 
+- **A notice says it used a console window because a path contains `%`.** Windows Terminal expands `%NAME%` in the command it's given and can't escape it, so if your temp folder (usually under your Windows user name) contains `%`, Lodestone uses a console window for that launch instead.
 - **Sessions open in a console window instead of Windows Terminal.** Check **Windows Terminal path** in settings; it shows what was detected. For a portable copy with no shortcut, point it at `wt.exe` in the folder you unzipped.
 
 ## Development

@@ -2,6 +2,7 @@ import { MarkdownRenderChild, Menu, Notice, type MarkdownPostProcessorContext } 
 import { LODESTONE_ICON } from "../icon";
 import type LodestonePlugin from "../main";
 import { appendRunToBlock, formatRunTime, formatSessionBlock, parsePromptBody, PROMPT_LANG, type PromptRun } from "../parse";
+import { stripInvisible } from "../sanitize";
 import { buildCopyCommand } from "../scripts";
 import { ENV_LABEL, type Env } from "../types";
 import { relativeTime, truncate } from "../util";
@@ -11,64 +12,114 @@ const PREVIEW_CHARS = 400;
 
 export function registerPromptBlock(plugin: LodestonePlugin) {
 	plugin.registerMarkdownCodeBlockProcessor(PROMPT_LANG, (source, el, ctx) => {
-		const { prompt, runs } = parsePromptBody(source);
-		const title = fenceTitle(el, ctx, PROMPT_LANG);
+		const parsed = parsePromptBody(source);
+		// Hidden characters are dropped from what's shown *and* what's sent, so the two match.
+		const { text: prompt, removed } = stripInvisible(parsed.prompt);
+		const runs = parsed.runs;
+		const fence = fenceTitle(el, ctx, PROMPT_LANG);
+		const title = fence ? stripInvisible(fence).text || null : null;
 		const card = el.createDiv({ cls: "lodestone-card lodestone-prompt" });
 		isolate(card);
 
 		const { right } = cardHeader(card, LODESTONE_ICON, title ?? "Claude prompt");
 		right.createSpan({ cls: "lodestone-badge lodestone-badge-kind", text: "prompt" });
 
-		if (!prompt) {
+		if (!prompt.trim()) {
 			card.createDiv({ cls: "lodestone-error", text: "Write the prompt for the new session inside this block." });
 			return;
 		}
 
-		const text = card.createDiv({ cls: "lodestone-prompt-text", text: prompt });
-		if (prompt.length > PREVIEW_CHARS || prompt.split("\n").length > 8) {
-			text.addClass("is-collapsed");
-			const toggle = card.createEl("a", { cls: "lodestone-toggle", text: "Show more" });
-			toggle.addEventListener("click", () => {
-				text.toggleClass("is-collapsed", !text.hasClass("is-collapsed"));
-				toggle.setText(text.hasClass("is-collapsed") ? "Show more" : "Show less");
+		// The preview is exactly what Run sends: placeholders filled in for the current default shell.
+		const sentPrompt = (env: Env) => plugin.expandTemplate(prompt, ctx.sourcePath, env);
+		const text = card.createDiv({ cls: "lodestone-prompt-text" });
+		const renderPreview = () => text.setText(sentPrompt(plugin.settings.defaultEnv));
+		renderPreview();
+
+		if (removed) {
+			card.createDiv({
+				cls: "lodestone-warning",
+				text: `Removed ${removed} hidden character${removed === 1 ? "" : "s"} (invisible or text-direction controls) from this prompt. They won't be sent. If you didn't put them there, check the note's source.`,
 			});
 		}
 
+		// A long prompt starts collapsed, and can't be run or copied until it has been expanded
+		// once. That's remembered for this exact text, so re-rendering after a Run doesn't ask again.
+		const reviewKey = `${ctx.sourcePath}\u0000${prompt}`;
+		let reviewed = true;
+		let expand = () => {};
+		const preview = sentPrompt(plugin.settings.defaultEnv);
+		if (preview.length > PREVIEW_CHARS || preview.split("\n").length > 8) {
+			reviewed = plugin.reviewedPrompts.has(reviewKey);
+			text.addClass("is-collapsed");
+			const toggle = card.createEl("a", { cls: "lodestone-toggle", text: "Show full prompt" });
+			const setCollapsed = (collapsed: boolean) => {
+				text.toggleClass("is-collapsed", collapsed);
+				toggle.setText(collapsed ? "Show full prompt" : "Show less");
+				if (!collapsed && !reviewed) {
+					reviewed = true;
+					plugin.reviewedPrompts.add(reviewKey);
+					updateGate();
+				}
+			};
+			expand = () => setCollapsed(false);
+			toggle.addEventListener("click", () => setCollapsed(!text.hasClass("is-collapsed")));
+		}
+
 		const actions = card.createDiv({ cls: "lodestone-actions" });
-		const runBtn = button(actions, { text: "", icon: "play", cta: true, tooltip: "Start a new session. Right-click to change where it opens" });
+		const runBtn = button(actions, { text: "", icon: "play", cta: true });
 		const copyBtn = button(actions, { text: "Copy command", icon: "copy" });
 		const updateLabel = () => setButtonText(runBtn, `Run in ${ENV_LABEL[plugin.settings.defaultEnv]}`);
+		const updateGate = () => {
+			for (const b of [runBtn, copyBtn]) b.toggleClass("is-unreviewed", !reviewed);
+			runBtn.setAttribute(
+				"aria-label",
+				reviewed ? "Start a new session. Right-click to change where it opens" : "Show the full prompt before running it",
+			);
+		};
 		updateLabel();
+		updateGate();
 
 		const child = new MarkdownRenderChild(el);
 		ctx.addChild(child);
-		child.register(plugin.onDefaultEnvChange(updateLabel));
+		child.register(
+			plugin.onDefaultEnvChange(() => {
+				updateLabel();
+				renderPreview();
+			}),
+		);
+
+		/** Runs `action` only once the whole prompt has been shown; otherwise shows it. */
+		const gated = (action: () => void) => () => {
+			if (reviewed) return action();
+			expand();
+			new Notice("Review the full prompt, then click again.");
+		};
 
 		const sessionName = title ?? truncate(prompt, 60);
 		const launch = async (env: Env) => {
 			const sessionId = await plugin.launchNew({
 				env,
 				cwd: plugin.noteFolder(ctx.sourcePath),
-				prompt: plugin.expandTemplate(prompt, ctx.sourcePath, env),
+				prompt: sentPrompt(env),
 				title: sessionName,
 				source: "prompt",
 				notePath: ctx.sourcePath,
 			});
 			if (sessionId) await recordRun(plugin, el, ctx, { time: formatRunTime(new Date()), env, sessionId });
 		};
-		runBtn.addEventListener("click", () => void launch(plugin.settings.defaultEnv));
+		runBtn.addEventListener("click", gated(() => void launch(plugin.settings.defaultEnv)));
 		runBtn.addEventListener("contextmenu", (evt) => plugin.showOpenSettingsMenu(evt));
 
 		const copyCommand = (env: Env) => {
 			const spec = plugin.newSessionSpec({
 				env,
 				cwd: plugin.noteFolder(ctx.sourcePath),
-				prompt: plugin.expandTemplate(prompt, ctx.sourcePath, env),
+				prompt: sentPrompt(env),
 				title: sessionName,
 			});
 			void plugin.copy(buildCopyCommand(spec, plugin.claudeCmd(env)), `${ENV_LABEL[env]} command copied`);
 		};
-		copyBtn.addEventListener("click", () => copyCommand(plugin.settings.defaultEnv));
+		copyBtn.addEventListener("click", gated(() => copyCommand(plugin.settings.defaultEnv)));
 		copyBtn.addEventListener("contextmenu", (evt) => plugin.showOpenSettingsMenu(evt));
 
 		if (runs.length) renderRuns(plugin, card, el, ctx, runs, title);

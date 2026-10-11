@@ -120,7 +120,7 @@ export class LodestoneSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Claude command (PowerShell)")
-			.setDesc("Command name or full path to claude.exe.")
+			.setDesc("Command name or full path to claude.exe. Batch-file shims (.cmd, .bat) are refused, because cmd.exe would re-parse the prompt.")
 			.addText((t) =>
 				t.setValue(s.claudeCommandPowershell).onChange(async (v) => {
 					s.claudeCommandPowershell = v.trim() || "claude";

@@ -35,6 +35,8 @@ export default class LodestonePlugin extends Plugin {
 	private headerButtons = new WeakMap<MarkdownView, HTMLElement>();
 	private envListeners = new Set<() => void>();
 	private warnedNoWindowsTerminal = false;
+	/** Long prompts already shown in full this session, keyed by note path and prompt text. */
+	reviewedPrompts = new Set<string>();
 
 	async onload() {
 		const data = ((await this.loadData()) ?? {}) as Partial<PluginData>;
@@ -208,10 +210,13 @@ export default class LodestonePlugin extends Plugin {
 	/** Expands {{file}}, {{path}}, {{vaultPath}} for a note, in the target env's path style. */
 	expandTemplate(text: string, vaultPath: string | undefined, env: Env): string {
 		if (!vaultPath) return text;
-		return text
-			.replace(/\{\{file\}\}/g, path.basename(vaultPath))
-			.replace(/\{\{path\}\}/g, this.toEnvPath(this.absolutePath(vaultPath), env))
-			.replace(/\{\{vaultPath\}\}/g, vaultPath);
+		const values: Record<string, string> = {
+			file: path.basename(vaultPath),
+			path: this.toEnvPath(this.absolutePath(vaultPath), env),
+			vaultPath,
+		};
+		// A replacer function, so `$&` or `$1` in a file name is inserted literally.
+		return text.replace(/\{\{(file|path|vaultPath)\}\}/g, (_m, key: string) => values[key]);
 	}
 
 	// ---- launching ---------------------------------------------------------------
@@ -293,10 +298,12 @@ export default class LodestonePlugin extends Plugin {
 		});
 	}
 
-	/** Launches, and says once per session if Windows Terminal was requested but isn't installed. */
+	/** Launches, and says when Windows Terminal was requested but a console window had to be used. */
 	private async openTerminal(spec: LaunchSpec, title: string) {
-		const { terminal } = await launchInTerminal(spec, title, this.settings);
-		if (this.settings.terminalApp === "windows-terminal" && terminal !== "windows-terminal" && !this.warnedNoWindowsTerminal) {
+		const { terminal, fallbackReason } = await launchInTerminal(spec, title, this.settings);
+		if (fallbackReason) {
+			new Notice(`Lodestone: opened a console window instead of Windows Terminal, because ${fallbackReason}.`, 8000);
+		} else if (this.settings.terminalApp === "windows-terminal" && terminal !== "windows-terminal" && !this.warnedNoWindowsTerminal) {
 			this.warnedNoWindowsTerminal = true;
 			new Notice("Lodestone: couldn't find Windows Terminal, so a console window was used instead. Set its path in Lodestone's settings.", 8000);
 		}
