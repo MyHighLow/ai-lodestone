@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs dev",
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "install-plugin": "npm run build && node scripts/install.mjs"
+    "install-plugin": "npm run build && node scripts/install.mjs",
+    "version": "node scripts/version-bump.mjs"
   },
   "license": "MIT",
   "devDependencies": {

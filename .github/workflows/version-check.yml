@@ -1,0 +1,34 @@
+# Advisory PR check: tests, build, and confirms the version files agree and the PR doesn't
+# change the version. See "Versioning" in README.md.
+name: Version check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # history, for HEAD^1 below
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      # HEAD is GitHub's test merge of the PR into main. Its first parent is the main commit it
+      # merged against, which can be newer than pull_request.base.sha.
+      - run: |
+          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" != 3 ]; then
+            echo "expected HEAD to be the PR's test merge commit" >&2
+            exit 1
+          fi
+          node scripts/check-version.mjs pr "$(git rev-parse HEAD^1)"

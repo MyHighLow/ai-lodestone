@@ -129,6 +129,15 @@ npm run build   # typecheck + production bundle
 | `src/sessions.ts`, `src/transcript.ts` | Find and summarize session transcripts. |
 | `src/blocks/` | The two code-block renderers. |
 
+### Versioning
+
+Versions are plain `X.Y.Z`, kept the same in `package.json`, `package-lock.json` and `manifest.json`, and listed in `versions.json`.
+
+- **Every merge to main is tagged.** `.github/workflows/release.yml` tags the merge commit with the next plain `X.Y.Z` (no `v`): one patch above the highest tag, or above main's version if that's higher. Merges that only change Markdown files, or files under `.github/` other than workflows, are skipped. CI makes no commit, so main's version files don't move.
+- **PRs don't change the version.** The **Version check** workflow fails a PR that changes the `version` field in `package.json`, `package-lock.json` or `manifest.json`, or anything in `versions.json`. Other `manifest.json` edits are fine.
+- **Main's `manifest.json` holds the latest stable version.** It changes only in a stable release, which is also where minor and major bumps are chosen. The community store reads it to find the version to install.
+- **Tags are only created by CI.** `npm version` never commits or tags here (`.npmrc` sets `git-tag-version=false`); its `version` script copies the version into `manifest.json` and `versions.json`. To run the checks locally, fetch first: `node scripts/check-version.mjs next` prints the tag CI would create (it fails on a branch that doesn't contain the latest tag), and `node scripts/check-version.mjs pr "$(git merge-base origin/main HEAD)"` runs the PR check against committed `HEAD`, so commit before running it. Use the merge base, not main's tip: CI compares against the main commit the PR merges into, and a stable release on main since you branched would otherwise look like your change.
+
 ### Knowledge base
 
 [`docs/kb/INDEX.md`](docs/kb/INDEX.md) collects what isn't obvious from the code: architecture, why launches are quoted the way they are, past decisions and gotchas. In Claude Code sessions in this repo, the `knowledge-base` skill (`.claude/skills/knowledge-base/`) is available automatically. It searches the knowledge base and suggests additions. Apart from that skill, `.claude/` is kept out of version control on purpose.
