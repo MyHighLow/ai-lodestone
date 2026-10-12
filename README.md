@@ -6,7 +6,7 @@ Windows desktop only: it opens console windows using `cmd`, `pwsh` and `wsl.exe`
 
 ## Install
 
-Every merge to main is tagged with a version (such as `0.1.4`) and published as a GitHub prerelease with the three files Obsidian needs: `main.js`, `manifest.json` and `styles.css`. Stable releases are marked **Latest** on the [releases page](https://github.com/MyHighLow/ai-lodestone/releases). Nothing has to be built, and you never type a vault path.
+Each merge to main that changes the plugin is tagged with a version (such as `0.1.4`) and published as a GitHub prerelease with the three files Obsidian needs: `main.js`, `manifest.json` and `styles.css`. Stable releases are marked **Latest** on the [releases page](https://github.com/MyHighLow/ai-lodestone/releases). With BRAT or by hand, nothing has to be built and you never type a vault path.
 
 ### With BRAT (recommended)
 
@@ -16,7 +16,7 @@ Every merge to main is tagged with a version (such as `0.1.4`) and published as 
 2. Open **Settings → BRAT** and click **Add beta plugin**. (Or run **BRAT: Plugins: Add a beta plugin for testing (with or without version)** from the command palette.)
 3. Enter the repository `MyHighLow/ai-lodestone`.
 4. Pick a version:
-   - **Latest version** follows the newest release, prereleases included, so you get every merge to main.
+   - **Latest version** follows the newest release, prereleases included, so you get each new tag.
    - A specific version, such as `0.1.4`, freezes the plugin at exactly that release. Versions marked **(Prerelease)** are per-merge builds.
 5. Click **Add plugin**. Then turn **AI Lodestone** on under **Settings → Community plugins**, or tick **Enable after installing the plugin** before clicking **Add plugin** and BRAT turns it on for you.
 
@@ -41,7 +41,7 @@ npm run install-plugin -- "D:\Vaults\MyVault"
 
 Then turn **AI Lodestone** on under **Settings → Community plugins** (turn off Restricted mode first if it's on, and click the reload icon next to **Installed plugins** if it isn't listed). The vault path can be a Windows path or a `/mnt/d/…` path; it's remembered in `.vault`.
 
-A source build reports main's stable version (from `manifest.json`), not the tag or commit you built, because each tag's version is written only into its release's `manifest.json`.
+A source build reports main's stable version (from `manifest.json`), not the tag or commit you built, because each tag's version is written only into its release's `manifest.json`. Commits before 0.1.3 still use the old id `lodestone`, so building one installs a separate copy into a `lodestone` folder next to `ai-lodestone`. Don't turn both on, and delete the `lodestone` folder when you're done with it.
 
 ## Update
 
@@ -55,11 +55,12 @@ Your settings and session history live in `data.json` in the plugin folder, and 
 
 The plugin used to be called Lodestone, with the id `lodestone`. It's now AI Lodestone (`ai-lodestone`), because the old id was already taken in Obsidian's community plugins. Obsidian keeps each plugin in a folder named after its id, so an existing install needs moving once:
 
-1. Quit Obsidian, so the old copy can't write its settings again.
-2. Install the new version as above. It goes into `<vault>/.obsidian/plugins/ai-lodestone/`.
-3. Move `data.json` (your settings and session history) from `<vault>/.obsidian/plugins/lodestone/` into the new `ai-lodestone` folder.
-4. Delete the old `lodestone` folder, so there aren't two copies.
-5. Open Obsidian and enable **AI Lodestone** under **Settings → Community plugins**.
+1. Turn off **Lodestone** under **Settings → Community plugins**, so the old copy can't write its settings again.
+2. Install AI Lodestone in any of the ways above, but don't turn it on yet (with BRAT, leave **Enable after installing the plugin** unticked). It goes into `<vault>/.obsidian/plugins/ai-lodestone/`.
+3. Quit Obsidian.
+4. Move `data.json` (your settings and session history) from `<vault>/.obsidian/plugins/lodestone/` into the new `ai-lodestone` folder.
+5. Delete the old `lodestone` folder, so there aren't two copies.
+6. Open Obsidian and turn on **AI Lodestone** under **Settings → Community plugins**.
 
 Notes and their `claude-session` and `claude-prompt` blocks don't change. Hotkeys you set for its commands don't carry over, because Obsidian stores them by plugin id: set them again under **Settings → Hotkeys**.
 
