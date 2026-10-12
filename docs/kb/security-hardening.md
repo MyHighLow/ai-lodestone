@@ -25,6 +25,7 @@ A note (written by someone else, synced, or pasted in) must not be able to run c
 | Refuse to start rather than send a different prompt when old PowerShell can't pass it intact. | [powershell-claude.md](powershell-claude.md) |
 | Strip invisible, text-direction and control characters after placeholder expansion and again for every launch. | [invisible-characters.md](invisible-characters.md) |
 | Long prompts must be expanded and seen before Run or Copy act. | [invisible-characters.md](invisible-characters.md) |
+| Release CI: npm runs only in read-only jobs, stable releases need an approval, and no secrets are stored. | [release-pipeline.md](release-pipeline.md) |
 
 Smaller fixes, all in `src/parse.ts` and `src/main.ts`:
 
