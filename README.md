@@ -6,43 +6,63 @@ Windows desktop only: it opens console windows using `cmd`, `pwsh` and `wsl.exe`
 
 ## Install
 
-You need Node 18+ in WSL (or on Windows) to build it.
+Each merge to main that changes the plugin is tagged with a version (such as `0.1.4`) and published as a GitHub prerelease with the three files Obsidian needs: `main.js`, `manifest.json` and `styles.css`. Stable releases are marked **Latest** on the [releases page](https://github.com/MyHighLow/ai-lodestone/releases). With BRAT or by hand, nothing has to be built and you never type a vault path.
+
+### With BRAT (recommended)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) installs plugins straight from their GitHub releases and keeps them up to date.
+
+1. In Obsidian, open **Settings → Community plugins** and turn off **Restricted mode** if it's on. Click **Browse**, search for **BRAT**, then install and enable it.
+2. Open **Settings → BRAT** and click **Add beta plugin**. (Or run **BRAT: Plugins: Add a beta plugin for testing (with or without version)** from the command palette.)
+3. Enter the repository `MyHighLow/ai-lodestone`.
+4. Pick a version:
+   - **Latest version** follows the newest release, prereleases included, so you get each new tag.
+   - A specific version, such as `0.1.4`, freezes the plugin at exactly that release. Versions marked **(Prerelease)** are per-merge builds.
+5. Click **Add plugin**. Then turn **AI Lodestone** on under **Settings → Community plugins**, or tick **Enable after installing the plugin** before clicking **Add plugin** and BRAT turns it on for you.
+
+### By hand, for a specific version
+
+1. Open the version's release page, `https://github.com/MyHighLow/ai-lodestone/releases/tag/X.Y.Z` (or pick one from the [releases page](https://github.com/MyHighLow/ai-lodestone/releases)), and download `main.js`, `manifest.json` and `styles.css`.
+2. In Obsidian, open **Settings → Community plugins** and turn off **Restricted mode** if it's on. Click the folder icon next to **Installed plugins** to open your vault's plugins folder.
+3. In that folder, create a folder named `ai-lodestone` and put the three files in it.
+4. Click the reload icon next to **Installed plugins**, then turn **AI Lodestone** on.
+
+### From source (developers, or a commit with no tag)
+
+You need git and Node 18+ in WSL (or on Windows).
 
 ```bash
-cd ~/git/lodestone
-npm install
+git clone https://github.com/MyHighLow/ai-lodestone.git
+cd ai-lodestone
+git checkout <tag-or-commit>   # optional; main by default
+npm ci
 npm run install-plugin -- "D:\Vaults\MyVault"
 ```
 
-Then in Obsidian, open **Settings → Community plugins**, turn off Restricted mode if it's on, and enable **AI Lodestone**. You may need to click the reload icon next to "Installed plugins" first.
+Then turn **AI Lodestone** on under **Settings → Community plugins** (turn off Restricted mode first if it's on, and click the reload icon next to **Installed plugins** if it isn't listed). The vault path can be a Windows path or a `/mnt/d/…` path; it's remembered in `.vault`.
 
-The vault path can be a Windows path or a `/mnt/d/…` path. It's remembered in `.vault`.
+A source build reports main's stable version (from `manifest.json`), not the tag or commit you built, because each tag's version is written only into its release's `manifest.json`. Commits before 0.1.3 still use the old id `lodestone`, so building one installs a separate copy into a `lodestone` folder next to `ai-lodestone`. Don't turn both on, and delete the `lodestone` folder when you're done with it.
 
 ## Update
 
-```bash
-npm run install-plugin
-```
+Your settings and session history live in `data.json` in the plugin folder, and every update keeps them.
 
-This rebuilds and copies into the remembered vault. Then toggle the plugin off and on in Obsidian, or restart Obsidian.
+- **BRAT:** with **Latest version**, run **BRAT: Plugins: Check for updates to all beta plugins and UPDATE**, or turn on **Auto-update plugins at startup** in BRAT's settings. A frozen version stays put until you change it: in **Settings → BRAT**, click the edit button next to AI Lodestone and pick another version.
+- **By hand:** download the new version's three files and replace the old ones in `ai-lodestone`, leaving `data.json` where it is. Then turn the plugin off and on, or restart Obsidian.
+- **From source:** `git pull` (or check out another tag or commit), then `npm ci` and `npm run install-plugin`, which installs into the remembered vault. Then turn the plugin off and on, or restart Obsidian.
 
 ### Moving from an install named Lodestone
 
 The plugin used to be called Lodestone, with the id `lodestone`. It's now AI Lodestone (`ai-lodestone`), because the old id was already taken in Obsidian's community plugins. Obsidian keeps each plugin in a folder named after its id, so an existing install needs moving once:
 
-1. Quit Obsidian, so the old copy can't write its settings again.
-2. Install the new version as above. It goes into `<vault>/.obsidian/plugins/ai-lodestone/`.
-3. Move `data.json` (your settings and session history) from `<vault>/.obsidian/plugins/lodestone/` into the new `ai-lodestone` folder.
-4. Delete the old `lodestone` folder, so there aren't two copies.
-5. Open Obsidian and enable **AI Lodestone** under **Settings → Community plugins**.
+1. Turn off **Lodestone** under **Settings → Community plugins**, so the old copy can't write its settings again.
+2. Install AI Lodestone in any of the ways above, but don't turn it on yet (with BRAT, leave **Enable after installing the plugin** unticked). It goes into `<vault>/.obsidian/plugins/ai-lodestone/`.
+3. Quit Obsidian.
+4. Move `data.json` (your settings and session history) from `<vault>/.obsidian/plugins/lodestone/` into the new `ai-lodestone` folder.
+5. Delete the old `lodestone` folder, so there aren't two copies.
+6. Open Obsidian and turn on **AI Lodestone** under **Settings → Community plugins**.
 
 Notes and their `claude-session` and `claude-prompt` blocks don't change. Hotkeys you set for its commands don't carry over, because Obsidian stores them by plugin id: set them again under **Settings → Hotkeys**.
-
-### Updating while you develop
-
-`npm run dev` rebuilds and re-copies into the remembered vault on every save. Install the community plugin **Hot Reload** in that vault, and Obsidian picks up each rebuild by itself. (The dev build adds the `.hotreload` marker file Hot Reload looks for.)
-
-To install into a different vault, pass its path again. The new path becomes the remembered one.
 
 ## Features
 
@@ -151,6 +171,12 @@ npm run build   # typecheck + production bundle
 | `src/sessions.ts`, `src/transcript.ts` | Find and summarize session transcripts. |
 | `src/blocks/` | The two code-block renderers. |
 
+### Rebuilding while you develop
+
+`npm run install-plugin -- "<vault>"` (see [From source](#from-source-developers-or-a-commit-with-no-tag)) remembers the vault in `.vault`. To install into a different vault, pass its path again; the new path becomes the remembered one.
+
+`npm run dev` rebuilds and re-copies into the remembered vault on every save. Install the community plugin **Hot Reload** in that vault, and Obsidian picks up each rebuild by itself. (The dev build adds the `.hotreload` marker file Hot Reload looks for.)
+
 ### Versioning
 
 Versions are plain `X.Y.Z`, kept the same in `package.json`, `package-lock.json` and `manifest.json`, and listed in `versions.json`.
@@ -162,7 +188,7 @@ Versions are plain `X.Y.Z`, kept the same in `package.json`, `package-lock.json`
 
 ### Releases
 
-- **Every tag gets an installable prerelease.** After tagging a merge, `release.yml` builds that tag (**Build release**) and publishes it as a GitHub prerelease (**Publish prerelease**) with `main.js`, `manifest.json` (with the tag's version written in) and `styles.css`, plus a build provenance attestation (`gh attestation verify main.js -R MyHighLow/lodestone`). It isn't marked Latest, and its notes are GitHub's generated list of changes. To retry a tag or publish an older one, run **Publish prerelease** by hand: `gh workflow run publish-prerelease.yml -f tag=X.Y.Z`. Tags before 0.1.3 can't be published: their manifest has the old id `lodestone`.
+- **Every tag gets an installable prerelease.** After tagging a merge, `release.yml` builds that tag (**Build release**) and publishes it as a GitHub prerelease (**Publish prerelease**) with `main.js`, `manifest.json` (with the tag's version written in) and `styles.css`, plus a build provenance attestation (`gh attestation verify main.js -R MyHighLow/ai-lodestone`). It isn't marked Latest, and its notes are GitHub's generated list of changes. To retry a tag or publish an older one, run **Publish prerelease** by hand: `gh workflow run publish-prerelease.yml -f tag=X.Y.Z`. Tags before 0.1.3 can't be published: their manifest has the old id `lodestone`.
 - **Stable releases are made on purpose** with the **Stable release** workflow (`stable-release.yml`), from main. Give it your release notes and exactly one of:
   - `tag`: promote that tag's prerelease to the stable release, with exactly the same files; or
   - `bump` (`patch`, `minor` or `major`): cut a new version, applied to the highest tag or the stable version, whichever is higher. It makes a `Release X.Y.Z` commit on main's current commit, tags it, and builds that tag.
