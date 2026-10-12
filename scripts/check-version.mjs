@@ -6,8 +6,12 @@
 //                  that highest tag isn't an ancestor of HEAD: a newer commit is tagged.
 //   pr <base-sha>  exits non-zero if committed HEAD changed a version field compared with
 //                  the base commit. PRs never change the version; stable releases do (#3).
+//   stable <tag> <bump>
+//                  prints `promote X.Y.Z` or `cut X.Y.Z`: what the Stable release workflow
+//                  makes. Exactly one of <tag> (an existing tag to promote) and <bump>
+//                  (patch, minor or major; `none` or empty for no bump) must be given.
 // Exits non-zero, printing why on stderr, on any failure.
-// Usage: node scripts/check-version.mjs next | pr <base-sha>
+// Usage: node scripts/check-version.mjs next | pr <base-sha> | stable <tag> <bump>
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -67,10 +71,42 @@ export function agreedVersion({ pkg, lock, manifest, versions }) {
  * Taking the higher of the two means a stable version cut by a release is never re-used.
  */
 export function nextTag(tags, manifestVersion) {
+	return bumpVersion(highestVersion(tags, manifestVersion), "patch");
+}
+
+/** The highest X.Y.Z tag or the manifest version, whichever is higher. */
+function highestVersion(tags, manifestVersion) {
 	const latest = latestVersionTag(tags);
-	const base = latest !== null && compareVersions(latest, manifestVersion) > 0 ? latest : manifestVersion;
-	const [major, minor, patch] = parseVersion(base);
-	return `${major}.${minor}.${patch + 1}`;
+	return latest !== null && compareVersions(latest, manifestVersion) > 0 ? latest : manifestVersion;
+}
+
+/** `version` raised by a patch, minor or major bump. */
+export function bumpVersion(version, bump) {
+	const [major, minor, patch] = parseVersion(version) ?? [];
+	if (major === undefined) throw new Error(`not a plain X.Y.Z version: ${version}`);
+	if (bump === "patch") return `${major}.${minor}.${patch + 1}`;
+	if (bump === "minor") return `${major}.${minor + 1}.0`;
+	if (bump === "major") return `${major + 1}.0.0`;
+	throw new Error(`bump must be patch, minor or major, not ${JSON.stringify(bump)}`);
+}
+
+/**
+ * What a stable release makes, from the Stable release workflow's inputs: exactly one of `tag`
+ * (promote that tag's prerelease, the same build) or `bump` (cut a new version: the bump
+ * applied to the highest X.Y.Z tag or the manifest version, whichever is higher, so it's above
+ * every tag). `bump` "none" or empty means no bump. A promoted tag must exist and be above the
+ * manifest version, the current stable one. Returns { mode: "promote" | "cut", version }.
+ */
+export function stableTarget({ tags, manifestVersion, tag = "", bump = "" }) {
+	const wantsBump = bump !== "" && bump !== "none";
+	if ((tag !== "") === wantsBump) throw new Error("give exactly one of a tag to promote or a bump to cut");
+	if (wantsBump) return { mode: "cut", version: bumpVersion(highestVersion(tags, manifestVersion), bump) };
+	if (!parseVersion(tag)) throw new Error(`tag ${JSON.stringify(tag)} isn't a plain X.Y.Z version`);
+	if (!tags.includes(tag)) throw new Error(`there is no tag ${tag}`);
+	if (compareVersions(tag, manifestVersion) <= 0) {
+		throw new Error(`tag ${tag} isn't above the current stable version ${manifestVersion}`);
+	}
+	return { mode: "promote", version: tag };
 }
 
 /**
@@ -150,13 +186,22 @@ function pr(baseSha) {
 	return "version unchanged";
 }
 
+function stable(version, tag, bump) {
+	const { mode, version: target } = stableTarget({ tags: gitTags(), manifestVersion: version, tag, bump });
+	return `${mode} ${target}`;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	const readJson = (f) => JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
-	const [mode, arg] = process.argv.slice(2);
+	const [mode, ...args] = process.argv.slice(2);
 	try {
-		if (mode !== "next" && mode !== "pr") throw new Error("usage: node scripts/check-version.mjs next | pr <base-sha>");
+		if (!["next", "pr", "stable"].includes(mode)) {
+			throw new Error("usage: node scripts/check-version.mjs next | pr <base-sha> | stable <tag> <bump>");
+		}
 		const version = agreedVersion(Object.fromEntries(Object.entries(FILES).map(([k, f]) => [k, readJson(f)])));
-		console.log(mode === "next" ? next(version) : pr(arg));
+		if (mode === "next") console.log(next(version));
+		else if (mode === "pr") console.log(pr(args[0]));
+		else console.log(stable(version, args[0] ?? "", args[1] ?? ""));
 	} catch (e) {
 		console.error(`[ai-lodestone] ${e.message}`);
 		process.exit(1);

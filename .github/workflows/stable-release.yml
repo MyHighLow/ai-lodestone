@@ -1,0 +1,283 @@
+# Makes a stable release on purpose: a full GitHub release marked Latest, with your notes, and
+# main's version files set to it. Run it by hand (Actions → Stable release → Run workflow, or
+# `gh workflow run`), with either a tag to promote (its prerelease becomes the stable release,
+# same build) or a bump to cut (a new `Release X.Y.Z` commit and tag, built fresh). Nothing is
+# written until a reviewer approves the run in the `stable-release` environment. See
+# "Releases" in README.md.
+#
+# Security: no stored secrets; every job uses GITHUB_TOKEN. `prepare` only reads, and shows the
+# reviewer what the run will do before the gate. npm dependencies run only in Build release,
+# which only reads. The jobs that write run GitHub's own actions, git, gh, and `npm version`
+# with this repo's dependency-free version script. Inputs reach run: steps only through env:.
+name: Stable release
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Release notes (Markdown). The form takes one line; see README for more.
+        required: true
+        type: string
+      tag:
+        description: Promote this tag's prerelease (X.Y.Z). Leave empty to cut a new version.
+        required: false
+        type: string
+        default: ""
+      bump:
+        description: Or cut a new version with this bump.
+        required: false
+        type: choice
+        options: [none, patch, minor, major]
+        default: none
+
+permissions:
+  contents: read
+
+# Not Release's tag-main group: a merge would cancel a run waiting for approval there.
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.target.outputs.mode }}
+      version: ${{ steps.target.outputs.version }}
+      sha: ${{ steps.target.outputs.sha }}
+      previous: ${{ steps.target.outputs.previous }}
+    env:
+      TAG: ${{ inputs.tag }}
+      BUMP: ${{ inputs.bump }}
+      NOTES: ${{ inputs.notes }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check the branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::run this from main"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0 # tags and history
+          persist-credentials: false
+      # The runner's Node runs the dependency-free script; no setup-node or npm ci.
+      - name: Work out the release
+        id: target
+        run: |
+          if [ -z "${NOTES//[[:space:]]/}" ]; then
+            echo "::error::the notes are empty"
+            exit 1
+          fi
+          out=$(node scripts/check-version.mjs stable "$TAG" "$BUMP")
+          read -r mode version <<< "$out"
+          if [ "$mode" = promote ]; then
+            if ! git merge-base --is-ancestor "refs/tags/$version" HEAD; then
+              echo "::error::tag $version isn't on main"
+              exit 1
+            fi
+            # Exactly the files Publish prerelease attaches, so a tag without a working
+            # prerelease (or an old `lodestone` one) can't be promoted.
+            assets=$(gh release view "$version" --json isPrerelease,assets \
+              --jq 'select(.isPrerelease) | [.assets[].name] | sort | join(" ")' 2>/dev/null || true)
+            if [ "$assets" != "main.js manifest.json styles.css" ]; then
+              echo "::error::$version has no prerelease with main.js, manifest.json and styles.css. Run Publish prerelease for it first."
+              exit 1
+            fi
+            sha=$(git rev-parse "refs/tags/$version^{commit}")
+            head=$version
+          else
+            sha=$GITHUB_SHA
+            head=$sha
+          fi
+          # The current stable version, if it was ever tagged (0.1.0 wasn't).
+          stable=$(jq -r .version manifest.json)
+          previous=
+          if git rev-parse -q --verify "refs/tags/$stable" > /dev/null; then previous=$stable; fi
+          {
+            echo "mode=$mode"
+            echo "version=$version"
+            echo "sha=$sha"
+            echo "previous=$previous"
+          } >> "$GITHUB_OUTPUT"
+          {
+            if [ "$mode" = promote ]; then
+              echo "## Promote $version to a stable release"
+              echo
+              echo "Prerelease $version (commit \`$sha\`) becomes the stable release, with the same files."
+            else
+              echo "## Cut stable release $version"
+              echo
+              echo "A \`Release $version\` commit on top of main's \`$sha\`, tagged $version and built fresh."
+            fi
+            echo
+            if [ -n "$previous" ]; then
+              echo "Changes since stable $previous: https://github.com/$GH_REPO/compare/$previous...$head"
+            else
+              echo "No earlier stable release is tagged: the generated list of changes covers all history."
+            fi
+            echo
+            echo "Main's version files become $version once the release is published."
+            echo
+            echo "### Notes"
+            echo
+            printf '%s\n' "$NOTES"
+            echo
+            echo "GitHub's generated list of changes is added below the notes after approval."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The gate: the only job in the stable-release environment, so a run needs one approval.
+  # Every later job that writes needs this one.
+  approve:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: stable-release
+    permissions:
+      contents: write
+    env:
+      MODE: ${{ needs.prepare.outputs.mode }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SHA: ${{ needs.prepare.outputs.sha }}
+      PREVIOUS: ${{ needs.prepare.outputs.previous }}
+      NOTES: ${{ inputs.notes }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Generating notes needs write access, so it can't happen before the gate.
+      - name: Write the release notes
+        run: |
+          args=(-f tag_name="$VERSION" -f target_commitish="$SHA")
+          if [ -n "$PREVIOUS" ]; then args+=(-f previous_tag_name="$PREVIOUS"); fi
+          generated=$(gh api -X POST "repos/$GH_REPO/releases/generate-notes" "${args[@]}" --jq .body)
+          mkdir notes
+          printf '%s\n\n%s\n' "$NOTES" "$generated" > notes/notes.md
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes
+          path: notes/notes.md
+          if-no-files-found: error
+          overwrite: true # a re-run of the same workflow run
+
+      # Cut only: the Release commit and its tag. Built from the commit prepare showed the
+      # reviewer, not whatever main is now. Only the tag is pushed; main is updated after the
+      # release exists (update-main).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.MODE == 'cut'
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Commit and tag the release
+        if: env.MODE == 'cut'
+        run: |
+          # .npmrc: npm makes no commit or tag. The version script updates manifest.json and
+          # versions.json; nothing is installed.
+          npm version "$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -a -m "Release $VERSION"
+          git tag -a "$VERSION" -m "AI Lodestone $VERSION"
+          # Not forced: if Release tagged a merge with this version meanwhile, this fails. Run
+          # the workflow again.
+          git push origin "refs/tags/$VERSION"
+
+  build:
+    needs: [prepare, approve]
+    if: needs.prepare.outputs.mode == 'cut'
+    uses: ./.github/workflows/build-release.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ needs.prepare.outputs.version }}
+
+  publish:
+    needs: [prepare, approve, build]
+    # A promote skips build.
+    if: >-
+      !cancelled() && needs.approve.result == 'success' &&
+      (needs.build.result == 'success' || (needs.prepare.outputs.mode == 'promote' && needs.build.result == 'skipped'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write # build provenance
+      attestations: write
+    env:
+      MODE: ${{ needs.prepare.outputs.mode }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
+          path: notes
+      - name: Promote the prerelease
+        if: env.MODE == 'promote'
+        run: gh release edit "$VERSION" --prerelease=false --latest --notes-file notes/notes.md
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: env.MODE == 'cut'
+        with:
+          name: release-files
+          path: release
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: env.MODE == 'cut'
+        with:
+          subject-path: release/*
+      - name: Publish the release
+        if: env.MODE == 'cut'
+        working-directory: release
+        run: |
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            # A re-run after this step got part way.
+            gh release upload "$VERSION" main.js manifest.json styles.css --clobber
+            gh release edit "$VERSION" --prerelease=false --latest --title "$VERSION" --notes-file ../notes/notes.md
+          else
+            gh release create "$VERSION" main.js manifest.json styles.css \
+              --verify-tag --latest --title "$VERSION" --notes-file ../notes/notes.md
+          fi
+
+  # Only after the release exists, so the community store, which reads main's manifest.json,
+  # never sees a version without one. A push with GITHUB_TOKEN doesn't start Release, so this
+  # commit gets no tag of its own.
+  update-main:
+    needs: [prepare, publish]
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      MODE: ${{ needs.prepare.outputs.mode }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0 # tags and history
+      - name: Set main's version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Two tries, in case a merge lands on main meanwhile.
+          for attempt in 1 2; do
+            git fetch -q origin main
+            git checkout -q -B main origin/main
+            if [ "$(jq -r .version manifest.json)" = "$VERSION" ]; then
+              echo "main already has version $VERSION"
+              exit 0
+            fi
+            if [ "$MODE" = promote ]; then
+              npm version "$VERSION"
+              git commit -a -m "Release $VERSION"
+            else
+              # Fast-forwards when main hasn't moved. Otherwise a merge, which keeps the stable
+              # tag in main's history (check-version.mjs next needs it there). It merges
+              # cleanly: PRs don't change the version fields.
+              git merge --no-edit -m "Merge release $VERSION" "refs/tags/$VERSION^{commit}"
+            fi
+            if git push origin HEAD:refs/heads/main; then exit 0; fi
+            echo "main moved; trying again"
+          done
+          echo "::error::couldn't update main to $VERSION. Re-run this job."
+          exit 1
