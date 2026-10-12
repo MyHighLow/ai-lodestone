@@ -1,0 +1,65 @@
+# Publishes a version tag as a GitHub prerelease with main.js, manifest.json and styles.css,
+# so every tag can be installed (BRAT, or by hand). Release runs it after tagging each merge to
+# main; run it by hand to retry or to backfill an older tag. See "Releases" in README.md.
+#
+# Security: the files are built by Build release, which can only read. The publish job runs no
+# npm: only GitHub's own actions and gh. The tag reaches run: steps only through env:.
+name: Publish prerelease
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Version tag to publish (plain X.Y.Z)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to publish (plain X.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-release.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ inputs.tag }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write # build provenance
+      attestations: write
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: release
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/*
+      - name: Create or update the prerelease
+        working-directory: release
+        run: |
+          prerelease=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null || true)
+          if [ -z "$prerelease" ]; then
+            gh release create "$TAG" main.js manifest.json styles.css \
+              --verify-tag --prerelease --latest=false --title "$TAG" --generate-notes
+          elif [ "$prerelease" = true ]; then
+            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+          else
+            echo "::error::$TAG is already a stable release; not replacing its files"
+            exit 1
+          fi

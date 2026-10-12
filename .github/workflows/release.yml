@@ -1,11 +1,13 @@
-# Tags each push to main with the next plain X.Y.Z version, on the merge commit itself. It
-# makes no commit: main's version files hold the latest stable version and change only in a
-# stable release. See "Versioning" in README.md.
+# Tags each push to main with the next plain X.Y.Z version, on the merge commit itself, then
+# publishes that tag as a prerelease (Publish prerelease). It makes no commit: main's version
+# files hold the latest stable version and change only in a stable release. See "Versioning"
+# and "Releases" in README.md.
 #
-# Security: third-party code (npm dependencies) only runs in the read-only `verify` job. The
-# `tag` job, the only one that can write, runs nothing but actions/checkout, git and a
+# Security: third-party code (npm dependencies) only runs in read-only jobs: `verify` here and
+# the build job in Build release. The `tag` job runs nothing but actions/checkout, git and a
 # dependency-free script in this repo. It uses GITHUB_TOKEN, so its tag push doesn't start
-# other workflows. No commit message, PR title or other user-written text is used in a run: step.
+# other workflows. The prerelease's publish job runs only GitHub's own actions and gh. No commit
+# message, PR title or other user-written text is used in a run: step.
 name: Release
 
 on:
@@ -51,8 +53,8 @@ jobs:
       cancel-in-progress: false
     outputs:
       # The tag on this commit: the one just created or, on a re-run, the highest version tag
-      # the commit already has. For #3 (release artifacts) to hook into with `needs: tag`: tags
-      # pushed with GITHUB_TOKEN don't trigger other workflows.
+      # the commit already has. The prerelease job below needs it: tags pushed with
+      # GITHUB_TOKEN don't trigger other workflows.
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       # No setup-node: it would get the write token as an input. The runner's Node runs the
@@ -76,3 +78,15 @@ jobs:
             git push origin "refs/tags/$tag"
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  # Outside the tag-main group, so a newer merge can't cancel it while it waits.
+  prerelease:
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/publish-prerelease.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}

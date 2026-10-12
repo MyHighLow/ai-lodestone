@@ -7,10 +7,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	agreedVersion,
+	bumpVersion,
 	compareVersions,
 	latestVersionTag,
 	nextTag,
 	parseVersion,
+	stableTarget,
 	versionFieldsChanged,
 } from "../scripts/check-version.mjs";
 
@@ -71,6 +73,47 @@ test("version: next tag is one patch above the highest tag or the manifest versi
 	assert.equal(nextTag(["0.1.7"], "0.2.0"), "0.2.1");
 	// A stable version that is also a tag.
 	assert.equal(nextTag(["0.1.7", "0.2.0"], "0.2.0"), "0.2.1");
+});
+
+test("version: bumps", () => {
+	assert.equal(bumpVersion("0.1.9", "patch"), "0.1.10");
+	assert.equal(bumpVersion("0.1.9", "minor"), "0.2.0");
+	assert.equal(bumpVersion("0.1.9", "major"), "1.0.0");
+	assert.throws(() => bumpVersion("0.1.9", "none"), /patch, minor or major/);
+	assert.throws(() => bumpVersion("v0.1.9", "patch"), /plain/);
+});
+
+test("version: a stable cut is above every tag", () => {
+	const tags = ["0.1.1", "0.1.2", "0.1.3", "not-a-version"];
+	assert.deepEqual(stableTarget({ tags, manifestVersion: "0.1.0", bump: "patch" }), { mode: "cut", version: "0.1.4" });
+	assert.deepEqual(stableTarget({ tags, manifestVersion: "0.1.0", bump: "minor" }), { mode: "cut", version: "0.2.0" });
+	assert.deepEqual(stableTarget({ tags, manifestVersion: "0.1.0", bump: "major" }), { mode: "cut", version: "1.0.0" });
+	// No tags yet: from the manifest version.
+	assert.deepEqual(stableTarget({ tags: [], manifestVersion: "0.1.0", bump: "minor" }), { mode: "cut", version: "0.2.0" });
+	// The manifest version is above every tag (an earlier stable cut).
+	assert.deepEqual(stableTarget({ tags: ["0.1.7"], manifestVersion: "0.2.0", bump: "patch" }), { mode: "cut", version: "0.2.1" });
+	assert.throws(() => stableTarget({ tags, manifestVersion: "0.1.0", bump: "huge" }), /patch, minor or major/);
+});
+
+test("version: a stable promote needs an existing tag above the stable version", () => {
+	const tags = ["0.1.1", "0.1.2", "0.1.3"];
+	assert.deepEqual(stableTarget({ tags, manifestVersion: "0.1.0", tag: "0.1.3" }), { mode: "promote", version: "0.1.3" });
+	assert.deepEqual(stableTarget({ tags, manifestVersion: "0.1.0", tag: "0.1.2", bump: "none" }), {
+		mode: "promote",
+		version: "0.1.2",
+	});
+	assert.throws(() => stableTarget({ tags, manifestVersion: "0.1.2", tag: "0.1.2" }), /isn't above/);
+	assert.throws(() => stableTarget({ tags, manifestVersion: "0.1.2", tag: "0.1.1" }), /isn't above/);
+	assert.throws(() => stableTarget({ tags, manifestVersion: "0.1.0", tag: "0.1.4" }), /no tag 0\.1\.4/);
+	for (const bad of ["v0.1.3", "0.1.3-rc.1", " 0.1.3", "0.1.3\n"]) {
+		assert.throws(() => stableTarget({ tags: [...tags, bad], manifestVersion: "0.1.0", tag: bad }), /plain/, bad);
+	}
+});
+
+test("version: a stable release needs exactly one of a tag and a bump", () => {
+	for (const inputs of [{}, { tag: "", bump: "" }, { tag: "", bump: "none" }, { tag: "0.1.3", bump: "patch" }]) {
+		assert.throws(() => stableTarget({ tags: ["0.1.3"], manifestVersion: "0.1.0", ...inputs }), /exactly one/, JSON.stringify(inputs));
+	}
 });
 
 test("version: PR check flags only version fields", () => {
@@ -218,4 +261,19 @@ test("version CLI: pr", (t) => {
 	assert.match(missing.err, /isn't in this clone/);
 	assert.match(r.run("pr", "HEAD").err, /full SHA/);
 	assert.match(r.run().err, /usage/);
+});
+
+test("version CLI: stable", (t) => {
+	const r = repo(t);
+	r.write("0.1.0");
+	r.commit("first");
+	r.git("tag", "-a", "0.1.1", "-m", "Lodestone 0.1.1");
+	assert.deepEqual(r.run("stable", "", "minor"), { code: 0, out: "cut 0.2.0", err: "" });
+	assert.deepEqual(r.run("stable", "0.1.1", "none"), { code: 0, out: "promote 0.1.1", err: "" });
+	assert.equal(r.run("stable", "0.1.1").out, "promote 0.1.1");
+	const both = r.run("stable", "0.1.1", "patch");
+	assert.equal(both.code, 1);
+	assert.match(both.err, /exactly one/);
+	assert.match(r.run("stable").err, /exactly one/);
+	assert.match(r.run("stable", "0.1.2", "none").err, /no tag/);
 });
