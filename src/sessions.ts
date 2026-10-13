@@ -1,8 +1,8 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { detectWslProjectsDir } from "./launcher";
-import { summarizeTranscript, type TranscriptSummary } from "./transcript";
+import { detectWslProjectsDir } from "./launcher.ts";
+import { summarizeTranscript, type TranscriptSummary } from "./transcript.ts";
 import type { Env, LodestoneSettings } from "./types";
 
 export interface SessionInfo extends TranscriptSummary {
@@ -19,8 +19,11 @@ export class SessionStore {
 	private paths = new Map<string, { env: Env; file: string }>();
 	private misses = new Map<string, number>();
 	private wslDir: Promise<string | null> | null = null;
+	private getSettings: () => LodestoneSettings;
 
-	constructor(private getSettings: () => LodestoneSettings) {}
+	constructor(getSettings: () => LodestoneSettings) {
+		this.getSettings = getSettings;
+	}
 
 	/** Call after settings change. */
 	reset(): void {
@@ -62,7 +65,7 @@ export class SessionStore {
 			{ env: "powershell", dir: this.windowsProjectsDir() },
 			{ env: "wsl", dir: await this.wslProjectsDir() },
 		];
-		const hits = (await Promise.all(stores.map((s) => (s.dir ? findIn(s.dir, sessionId, s.env) : [])))).flat();
+		const hits = (await Promise.all(stores.map(async (s) => (s.dir ? findIn(s.dir, sessionId, s.env) : [])))).flat();
 		if (!hits.length) {
 			this.misses.set(sessionId, Date.now());
 			return null;

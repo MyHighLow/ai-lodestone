@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import builtins from "builtin-modules";
+import { builtinModules } from "node:module";
 import { copyToVault, logPrefix, readSavedVault } from "./scripts/install.mjs";
 
 const prod = process.argv[2] === "production";
@@ -23,7 +23,7 @@ const copyPlugin = {
 const context = await esbuild.context({
 	entryPoints: ["src/main.ts"],
 	bundle: true,
-	external: ["obsidian", "electron", "@codemirror/*", "@lezer/*", ...builtins],
+	external: ["obsidian", "electron", "@codemirror/*", "@lezer/*", ...builtinModules],
 	format: "cjs",
 	target: "es2020",
 	logLevel: "info",
