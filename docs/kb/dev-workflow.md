@@ -1,7 +1,7 @@
 ---
 title: Development workflow
 tags: [workflow, build, testing, install]
-updated: 2026-10-11
+updated: 2026-10-13
 ---
 
 # Development workflow
@@ -20,7 +20,7 @@ Install and update steps for users are in the [README](../../README.md). This en
 ## Gotchas
 
 - **Tests need Node 22.6 or later** for `--experimental-strip-types`, even though building works on older Node. They also need `bash` on PATH, because some tests run the generated bash scripts. Run them in WSL or Linux.
-- **Mostly the pure modules are tested** (see [architecture.md](architecture.md)). `test/launcher.test.ts` also loads `launcher.ts`, but only covers its non-Windows paths, where launching throws and detection returns `null` without spawning anything. Anything that imports `obsidian`, or actually launches processes, needs a manual check in a real vault on Windows.
+- **Mostly the pure modules are tested** (see [architecture.md](architecture.md)). `test/launcher.test.ts` also loads `launcher.ts`, but only covers its non-Windows paths, where launching throws and detection returns `null` without spawning anything. `test/sessions.test.ts` loads `sessions.ts` and looks up sessions in temp folders. Anything that imports `obsidian`, or actually launches processes, needs a manual check in a real vault on Windows.
 - **`.vault`** remembers the vault path from the last `install-plugin` and is gitignored. It can be a Windows path or a `/mnt/d/…` path; Windows paths are converted when running under WSL. The target must contain a `.obsidian` folder.
 - `main.js` is a build output and is gitignored.
 - The `obsidian` API package is pinned to an exact version in `package.json` (since #5). Bump it on purpose. When you do, check that nothing new is used above `minAppVersion` in `manifest.json`: `eslint-plugin-obsidianmd`'s `no-unsupported-api` rule reports that, and it's how a `getFileByPath` call that needed 1.5.7 was found.

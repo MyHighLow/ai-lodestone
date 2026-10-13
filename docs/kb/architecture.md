@@ -1,7 +1,7 @@
 ---
 title: Architecture
 tags: [architecture, modules, testing]
-updated: 2026-10-11
+updated: 2026-10-13
 ---
 
 # Architecture
@@ -27,7 +27,7 @@ The code is split so that everything risky (quoting, parsing, sanitizing) is pur
 
 Rule of thumb: logic that decides *what text* reaches a shell or claude belongs in a pure module with tests. The impure modules should only do I/O with the result.
 
-Modules that the tests load import each other with an explicit `.ts` extension (for example `import { stripInvisible } from "./sanitize.ts"` in `scripts.ts`), because Node runs them directly. That's the pure modules, plus `launcher.ts`, whose non-Windows paths are tested. `tsconfig.json` sets `allowImportingTsExtensions` for this.
+Modules that the tests load import each other with an explicit `.ts` extension (for example `import { stripInvisible } from "./sanitize.ts"` in `scripts.ts`), because Node runs them directly. That's the pure modules, plus `launcher.ts` (its non-Windows paths) and `sessions.ts` (session lookup against temp folders). `tsconfig.json` sets `allowImportingTsExtensions` for this. Those modules also can't use TypeScript-only syntax that Node's strip-only mode rejects, such as constructor parameter properties (`constructor(private x: T)`); assign the field in the constructor instead.
 
 ## Launch flow
 
